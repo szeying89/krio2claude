@@ -2,15 +2,26 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
 from app.api.deps import get_project_cri_service
 from app.api.schemas import ImpactTieringOut, ImpactTieringRequest
+from app.core.config import get_settings
 from app.services.cri.db_service import (
     CRIProfileNotUploadedError,
     ProjectCRIService,
     ProjectNotFoundError,
 )
+from app.services.cri.snapshot import read_manifest as read_cri_manifest
 from app.services.cri.tiering import QuestionAnswer, TieringError
 from app.services.cri.workbook_parser import CRIWorkbookParseError
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["cri"])
+snapshots_router = APIRouter(prefix="/cri/snapshots", tags=["cri"])
+
+
+@snapshots_router.get("/{content_hash}")
+async def get_cri_snapshot(content_hash: str) -> dict:
+    snapshot_dir = get_settings().cri_dir / content_hash
+    if not snapshot_dir.is_dir():
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    return read_cri_manifest(snapshot_dir)
 
 
 @router.post("/cri-profile")

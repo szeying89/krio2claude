@@ -113,3 +113,12 @@ class ImpactTieringOut(BaseModel):
     triggering_question_id: str | None
     answers: list[dict[str, Any]]
     computed_at: datetime
+
+
+class RetrievalResultOut(BaseModel):
+    doc_id: str
+    fused_score: float
+    bm25_rank: int | None
+    dense_rank: int | None
+    snippet: str
+    metadata: dict[str, Any]

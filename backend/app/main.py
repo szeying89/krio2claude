@@ -4,8 +4,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.cri import router as cri_router
+from app.api.cri import snapshots_router as cri_snapshots_router
 from app.api.kb import router as kb_router
 from app.api.projects import router as projects_router
+from app.api.retrieval import router as retrieval_router
 from app.api.runs import router as runs_router
 from app.core.config import assert_bind_allowed, get_settings
 from app.db.base import get_database
@@ -31,6 +33,8 @@ def create_app() -> FastAPI:
     app.include_router(projects_router)
     app.include_router(kb_router)
     app.include_router(cri_router)
+    app.include_router(cri_snapshots_router)
+    app.include_router(retrieval_router)
     return app
 
 

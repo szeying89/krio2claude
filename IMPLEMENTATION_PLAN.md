@@ -232,15 +232,17 @@ Risk = Impact × Likelihood, banded, with a per-CSF-function rollup (GV/ID/PR/DE
 
   Demo: Upload the real CRI workbook, submit the 9 tiering answers, get "Tier 2, triggered by question 2.3" with the full justification trail, and browse "311 of 318 diagnostic statements in scope" filterable by tier via the API.
 
-- [ ] **Task 5: Hybrid retrieval service**
+- [x] **Task 5: Hybrid retrieval service**
 
-  Per-snapshot indexes: SQLite FTS5 BM25 over technique text plus dense embeddings in a local vector store, fused by reciprocal-rank fusion. Retrieval API takes query text and filters (matrix, tactic, platform) and returns chunks with scores and stable `chunk_id`s. A second collection indexes CRI diagnostic statements for statement-level semantic lookup. Labelled eval set covering exact-ID lookups, Enterprise paraphrases, ATLAS/ML phrasing, and CRI statement retrieval, with recall@k thresholds asserted in CI.
+  Per-snapshot indexes: SQLite FTS5 BM25 over technique text, fused by reciprocal-rank fusion with a "dense" retriever. The dense side is a deliberately-labelled proxy — TF-IDF over character n-grams — rather than a neural embedding model, because huggingface.co is unreachable from this sandbox (the same class of restriction as d3fend.mitre.org in Task 3) and there is no way to verify a real model download from here. It's built behind a narrow `Embedder` fit/transform protocol so a real embedding provider can be swapped in later without touching the retrieval service, and it does genuinely capture a different signal than exact-token BM25 (reordering, inflection, hyphenation, partial substrings) even though it isn't semantic. Retrieval API takes query text and filters (matrix, tactic, platform) and returns chunks with fused scores, per-retriever ranks, and citable snippets. A second, fully isolated collection indexes CRI diagnostic statements for statement-level lookup.
 
-  *Owner: Retrieval Service (consumed as a tool by the Enumeration Agent).*
+  *Owner: Retrieval Service (consumed as a tool by the Enumeration Agent, once agents exist).*
 
-  Tests: BM25 wins exact T1078-style lookups; dense wins paraphrases; RRF beats either alone; identical query + snapshot returns identical ordered results; CRI collection isolated from technique collection.
+  Tests: BM25 wins exact-ID lookups; dense wins a lexical paraphrase BM25 misses entirely; RRF's fused recall@3 across the full labelled eval set exceeds either retriever alone; identical query + snapshot returns identical ordered results; CRI collection isolated from technique collection; matrix/tactic/platform filters verified.
 
-  Demo: Retrieval playground — query "model inversion against a hosted inference endpoint", see fused results with matrix badges, per-retriever ranks, and citable snippets alongside related CRI statements.
+  Verified against real live ATT&CK Enterprise/ATLAS data (867 techniques, same snapshot as Task 3's live verification): querying "model inversion against a hosted inference endpoint" surfaces `AML.T0024.001 Invert AI Model` and `AML.T0040 AI Model Inference API Access` in the top 5 fused results, exactly matching the plan's demo scenario.
+
+  Demo: Retrieval playground — query "model inversion against a hosted inference endpoint", see fused results with matrix badges, per-retriever ranks, and citable snippets; filter to `matrix=atlas` and confirm only ATLAS techniques remain.
 
 - [ ] **Task 6: Deterministic Mermaid parser**
 
