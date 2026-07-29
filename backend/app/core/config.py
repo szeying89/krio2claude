@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     data_dir: Path = Path("./data")
     database_url: str = "sqlite+aiosqlite:///./app.db"
 
+    max_upload_bytes: int = 20 * 1024 * 1024  # 20 MiB
+
     @property
     def runs_dir(self) -> Path:
         return self.data_dir / "runs"
@@ -26,6 +28,10 @@ class Settings(BaseSettings):
     @property
     def cache_dir(self) -> Path:
         return self.data_dir / "cache"
+
+    @property
+    def projects_dir(self) -> Path:
+        return self.data_dir / "projects"
 
 
 def get_settings() -> Settings:

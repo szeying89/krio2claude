@@ -196,7 +196,7 @@ Risk = Impact × Likelihood, banded, with a per-CSF-function rollup (GV/ID/PR/DE
 
   Demo: Register a no-op stub agent, invoke it twice with identical inputs (second call is a cache hit), then change one input and see the invalidation graph mark exactly the correct downstream stub agents dirty.
 
-- [ ] **Task 2: Project context and design document ingestion**
+- [x] **Task 2: Project context and design document ingestion**
 
   Project CRUD and context form (system name, business criticality, data classifications, compliance regimes, declared system class IT/ML/hybrid, scope statements, declared controls). Upload `.md`/`.txt`/`.pdf`/`.docx` with SHA-256 hashing, type/size validation, text normalisation, fenced-Mermaid extraction.
 

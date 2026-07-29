@@ -1,8 +1,9 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models.enums import RunStatus, StageStatus
+from app.models.enums import BusinessCriticality, RunStatus, StageStatus, SystemClass
 
 
 class RunStageOut(BaseModel):
@@ -42,3 +43,53 @@ class TransitionRunRequest(BaseModel):
 class TransitionStageRequest(BaseModel):
     status: StageStatus
     error: str | None = None
+
+
+class DesignDocumentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    filename: str
+    content_type: str
+    sha256: str
+    size_bytes: int
+    extracted_prose: str
+    mermaid_blocks: list[dict[str, Any]]
+    created_at: datetime
+
+
+class ProjectOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    business_criticality: BusinessCriticality
+    system_class: SystemClass
+    data_classifications: list[str]
+    compliance_regimes: list[str]
+    scope_statements: list[str]
+    declared_controls: list[str]
+    created_at: datetime
+    updated_at: datetime
+    documents: list[DesignDocumentOut]
+
+
+class CreateProjectRequest(BaseModel):
+    name: str
+    business_criticality: BusinessCriticality
+    system_class: SystemClass
+    data_classifications: list[str] = []
+    compliance_regimes: list[str] = []
+    scope_statements: list[str] = []
+    declared_controls: list[str] = []
+
+
+class UpdateProjectRequest(BaseModel):
+    name: str | None = None
+    business_criticality: BusinessCriticality | None = None
+    system_class: SystemClass | None = None
+    data_classifications: list[str] | None = None
+    compliance_regimes: list[str] | None = None
+    scope_statements: list[str] | None = None
+    declared_controls: list[str] | None = None
