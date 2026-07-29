@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 20 * 1024 * 1024  # 20 MiB
 
+    llm_provider: str = "anthropic"  # "anthropic" | "openai"
+    llm_model: str = "claude-sonnet-5"
+
     @property
     def runs_dir(self) -> Path:
         return self.data_dir / "runs"
@@ -28,6 +31,10 @@ class Settings(BaseSettings):
     @property
     def cache_dir(self) -> Path:
         return self.data_dir / "cache"
+
+    @property
+    def llm_cache_dir(self) -> Path:
+        return self.cache_dir / "llm"
 
     @property
     def projects_dir(self) -> Path:
