@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     def cri_dir(self) -> Path:
         return self.data_dir / "cri"
 
+    @property
+    def intel_dir(self) -> Path:
+        return self.data_dir / "intel"
+
 
 def get_settings() -> Settings:
     return Settings()

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.api.cri import router as cri_router
 from app.api.cri import snapshots_router as cri_snapshots_router
 from app.api.enumeration import router as enumeration_router
+from app.api.intel import router as intel_router
 from app.api.kb import router as kb_router
 from app.api.mermaid import router as mermaid_router
 from app.api.mitigation import router as mitigation_router
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
     settings.kb_dir.mkdir(parents=True, exist_ok=True)
     settings.cri_dir.mkdir(parents=True, exist_ok=True)
+    settings.intel_dir.mkdir(parents=True, exist_ok=True)
     db = get_database()
     await db.create_all()
     yield
@@ -47,6 +49,7 @@ def create_app() -> FastAPI:
     app.include_router(enumeration_router)
     app.include_router(mitigation_router)
     app.include_router(risk_router)
+    app.include_router(intel_router)
     return app
 
 
