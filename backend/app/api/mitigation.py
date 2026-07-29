@@ -1,23 +1,16 @@
-from dataclasses import replace
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import get_project_cri_service, get_project_service, get_system_model_service
-from app.core.config import get_settings
-from app.services.cri.db_service import CRIProfileNotUploadedError, ProjectCRIService
-from app.services.cri.models import DiagnosticStatement
+from app.api.gap_context import cri_statements_with_bridge, get_kb_snapshot
+from app.services.cri.db_service import ProjectCRIService
 from app.services.enumeration.attack_graph import AttackGraphBudgetExceededError, build_attack_graph
-from app.services.enumeration.bridge import TechniqueIndex, build_technique_index
 from app.services.enumeration.engine import enumerate_threats
 from app.services.enumeration.path_enumeration import (
     PathEnumerationBudgetExceededError,
     enumerate_paths,
 )
 from app.services.enumeration.ruleset import load_ruleset
-from app.services.kb.d3fend import D3fendTechnique
-from app.services.kb.models import TechniqueChunk
-from app.services.kb.snapshot import latest_snapshot_dir, read_d3fend_catalog, read_techniques
 from app.services.mitigation.gap_analysis import compute_technique_gaps, techniques_in_paths
 from app.services.mitigation.inventory import build_control_inventory
 from app.services.project_service import ProjectNotFoundError, ProjectService
@@ -30,38 +23,6 @@ from app.services.systemmodel.models import SystemModel
 router = APIRouter(prefix="/projects", tags=["mitigation"])
 
 _RULESET = load_ruleset()
-_technique_indexes: dict[str, TechniqueIndex] = {}
-
-
-class _KbSnapshot:
-    def __init__(
-        self,
-        index: TechniqueIndex,
-        techniques_by_id: dict[str, TechniqueChunk],
-        d3fend_catalog: list[D3fendTechnique],
-    ) -> None:
-        self.index = index
-        self.techniques_by_id = techniques_by_id
-        self.d3fend_catalog = d3fend_catalog
-
-
-def _get_kb_snapshot() -> _KbSnapshot | None:
-    """The gap analysis needs the live KB technique corpus (both as a
-    bridge index, to drive `techniques_in_paths` via attack-graph
-    construction, and as a plain by-id lookup for each technique's own
-    D3FEND requirements) plus the D3FEND catalog snapshotted alongside it.
-    If no KB has ever been fetched (Task 3), gap analysis has nothing to
-    compute requirements against — this returns None rather than failing
-    the whole request over a missing, optional prerequisite."""
-    snapshot_dir = latest_snapshot_dir(get_settings().kb_dir)
-    if snapshot_dir is None:
-        return None
-    key = snapshot_dir.name
-    if key not in _technique_indexes:
-        _technique_indexes[key] = build_technique_index(read_techniques(snapshot_dir))
-    techniques_by_id = {c.id: c for c in read_techniques(snapshot_dir)}
-    d3fend_catalog = read_d3fend_catalog(snapshot_dir)
-    return _KbSnapshot(_technique_indexes[key], techniques_by_id, d3fend_catalog)
 
 
 class ControlInventoryEntryOut(BaseModel):
@@ -88,54 +49,17 @@ class ControlGapsOut(BaseModel):
     technique_gaps: list[TechniqueGapOut]
 
 
-async def _cri_statements(
-    cri_service: ProjectCRIService, project_id: str
-) -> list[DiagnosticStatement]:
-    """Degrades gracefully when no CRI profile has been uploaded yet — the
-    project's technique gaps then simply report every technique as
-    `cri_mapping_absent`, the same "degrade, don't fail" pattern used
-    elsewhere in this plan, rather than 404ing the whole endpoint over an
-    optional input.
-
-    `get_statements` returns statements straight from the workbook parse,
-    where `mapped_technique_ids` is always empty (Task 4's heuristic
-    CRI->ATT&CK bridge is stored separately, as `inferred_mappings.json`,
-    keyed by a specific KB pin — see cri/snapshot.py). Merge that bridge in
-    here so `compute_technique_gaps` sees the real inferred mapping rather
-    than treating every statement as unmapped.
-    """
-    try:
-        raw_statements = await cri_service.get_statements(project_id)
-    except CRIProfileNotUploadedError:
-        return []
-    try:
-        inferred_by_statement = await cri_service.get_inferred_mappings(project_id)
-    except CRIProfileNotUploadedError:
-        inferred_by_statement = {}
-
-    statements = [DiagnosticStatement.from_dict(s) for s in raw_statements]
-    return [
-        replace(
-            statement,
-            mapped_technique_ids=tuple(
-                m.technique_id for m in inferred_by_statement.get(statement.profile_id, ())
-            ),
-        )
-        for statement in statements
-    ]
-
-
 async def _build_control_gaps(
     project_id: str,
     model: SystemModel,
     atlas_enabled: bool,
     cri_service: ProjectCRIService,
 ) -> ControlGapsOut:
-    cri_statements = await _cri_statements(cri_service, project_id)
+    cri_statements = await cri_statements_with_bridge(cri_service, project_id)
     tiering = await cri_service.get_tiering(project_id)
     tier = tiering.tier if tiering is not None else None
 
-    snapshot = _get_kb_snapshot()
+    snapshot = get_kb_snapshot()
     if snapshot is None:
         return ControlGapsOut(tier=tier, control_inventory=[], technique_gaps=[])
 

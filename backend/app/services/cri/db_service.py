@@ -84,6 +84,18 @@ class ProjectCRIService:
         snapshot_dir = self.settings.cri_dir / project.cri_snapshot_hash
         return _read_cri_inferred_mappings(snapshot_dir)
 
+    async def get_regulatory_documents(self, project_id: str) -> dict[str, dict[str, Any]]:
+        """The Mappings Catalog: short_code -> {document_name, issuing_organization,
+        region, issue_date, source_link, status} — used to resolve a CRI
+        diagnostic statement's regulatory_references into full citations."""
+        project = await self._get_project(project_id)
+        if not project.cri_snapshot_hash:
+            raise CRIProfileNotUploadedError(project_id)
+        snapshot_dir = self.settings.cri_dir / project.cri_snapshot_hash
+        path = snapshot_dir / "regulatory_documents.json"
+        data: dict[str, dict[str, Any]] = json.loads(path.read_text())
+        return data
+
     async def compute_tiering(
         self, project_id: str, answers: list[QuestionAnswer]
     ) -> ImpactTiering:

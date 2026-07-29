@@ -12,6 +12,7 @@ from app.api.mitigation import router as mitigation_router
 from app.api.modelbuilding import router as modelbuilding_router
 from app.api.projects import router as projects_router
 from app.api.retrieval import router as retrieval_router
+from app.api.risk import router as risk_router
 from app.api.runs import router as runs_router
 from app.api.systemmodel import router as systemmodel_router
 from app.core.config import assert_bind_allowed, get_settings
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     app.include_router(systemmodel_router)
     app.include_router(enumeration_router)
     app.include_router(mitigation_router)
+    app.include_router(risk_router)
     return app
 
 

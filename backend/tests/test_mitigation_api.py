@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from app.api import mitigation as mitigation_module
 from app.api.deps import get_llm_gateway
+from app.api.gap_context import clear_technique_index_cache
 from app.core.config import get_settings
 from app.services.kb.d3fend import D3fendTechnique
 from app.services.kb.models import TechniqueChunk
@@ -39,9 +39,9 @@ CRI_FIXTURE_BYTES = Path("tests/fixtures/cri/sample_cri_profile.xlsx").read_byte
 
 @pytest.fixture(autouse=True)
 def _clear_technique_index_cache():
-    mitigation_module._technique_indexes.clear()
+    clear_technique_index_cache()
     yield
-    mitigation_module._technique_indexes.clear()
+    clear_technique_index_cache()
 
 # A single technique whose name/description was deliberately picked to
 # lexically bridge against both a D3FEND countermeasure and a real CRI
