@@ -3,10 +3,16 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, model_validator
 
-from app.api.deps import get_llm_gateway, get_project_service, get_system_model_service
+from app.api.deps import (
+    get_audit_log_service,
+    get_llm_gateway,
+    get_project_service,
+    get_system_model_service,
+)
 from app.core.config import get_settings
 from app.orchestrator.orchestrator import Orchestrator, ValidationError
 from app.orchestrator.registry import AgentRegistry
+from app.services.audit.service import AuditLogService
 from app.services.intel.agent import AGENT_NAME, build_intel_agent, validate_intel_extraction
 from app.services.intel.fetch import FetchError, fetch_article
 from app.services.intel.models import ExtractedIntel
@@ -67,6 +73,7 @@ def _extracted_out(extracted: ExtractedIntel) -> ExtractedIntelOut:
 async def ingest_article(
     body: IntelIngestIn,
     gateway: LLMGateway = Depends(get_llm_gateway),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> IntelArticleOut:
     settings = get_settings()
 
@@ -103,8 +110,29 @@ async def ingest_article(
         extracted = result.output_artifacts["extracted_intel"]
         injection_indicators = result.output_artifacts["injection_indicators"]
         write_extraction(article_dir, extracted.to_dict(), injection_indicators)
+        await audit.record(
+            "agent.invoked",
+            f"{AGENT_NAME} agent invoked ({len(result.trajectory.tool_calls)} tool calls)",
+            detail={
+                "agent_name": AGENT_NAME,
+                "tool_call_count": len(result.trajectory.tool_calls),
+                "cache_hit": result.cache_hit,
+                "latency_ms": result.trajectory.latency_ms,
+            },
+        )
 
     record = read_article(article_dir)
+    await audit.record(
+        "intel.ingested",
+        f"intel article {record.content_hash} ingested"
+        + (f" from {source_url}" if source_url else " from pasted text"),
+        detail={
+            "content_hash": record.content_hash,
+            "source_url": source_url,
+            "technique_ids": list(extracted.technique_ids),
+            "injection_indicator_count": len(injection_indicators),
+        },
+    )
     return IntelArticleOut(
         content_hash=record.content_hash,
         source_url=record.source_url,

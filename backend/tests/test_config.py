@@ -16,3 +16,9 @@ def test_non_loopback_bind_rejected_without_flag():
 
 def test_non_loopback_bind_allowed_with_explicit_flag():
     assert_bind_allowed("0.0.0.0", allow_non_loopback=True)
+
+
+def test_non_loopback_bind_with_flag_warns_that_auth_is_absent(caplog):
+    with caplog.at_level("WARNING"):
+        assert_bind_allowed("0.0.0.0", allow_non_loopback=True)
+    assert any("no authentication" in record.message for record in caplog.records)

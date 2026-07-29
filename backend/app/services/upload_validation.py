@@ -20,17 +20,24 @@ class UploadValidationError(Exception):
     pass
 
 
-def validate_upload(filename: str, content: bytes, max_bytes: int) -> str:
-    """Validate an uploaded file's extension, size, and magic bytes.
-
-    Returns the validated (lowercased) extension on success.
-    """
+def validate_upload_size(filename: str, content: bytes, max_bytes: int) -> None:
+    """Enforce Task 24's upload-limit requirement: shared by every upload
+    endpoint (design documents, CRI workbooks) so the limit is enforced
+    once, not re-implemented per endpoint."""
     if len(content) > max_bytes:
         raise UploadValidationError(
             f"file {filename!r} is {len(content)} bytes, exceeding the {max_bytes} byte limit"
         )
     if len(content) == 0:
         raise UploadValidationError(f"file {filename!r} is empty")
+
+
+def validate_upload(filename: str, content: bytes, max_bytes: int) -> str:
+    """Validate an uploaded file's extension, size, and magic bytes.
+
+    Returns the validated (lowercased) extension on success.
+    """
+    validate_upload_size(filename, content, max_bytes)
 
     extension = PurePosixPath(filename).suffix.lower()
     if extension not in ALLOWED_EXTENSIONS:

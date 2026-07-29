@@ -2,8 +2,9 @@ import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.deps import get_kb_refresh_service
+from app.api.deps import get_audit_log_service, get_kb_refresh_service
 from app.core.config import get_settings
+from app.services.audit.service import AuditLogService
 from app.services.kb.refresh_service import KBRefreshService
 from app.services.kb.snapshot import read_manifest
 
@@ -11,12 +12,21 @@ router = APIRouter(prefix="/kb", tags=["kb"])
 
 
 @router.post("/refresh")
-async def refresh_kb(service: KBRefreshService = Depends(get_kb_refresh_service)) -> dict:
+async def refresh_kb(
+    service: KBRefreshService = Depends(get_kb_refresh_service),
+    audit: AuditLogService = Depends(get_audit_log_service),
+) -> dict:
     try:
         snapshot_dir = await asyncio.to_thread(service.refresh)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"KB refresh failed: {exc}") from exc
-    return read_manifest(snapshot_dir)
+    manifest = read_manifest(snapshot_dir)
+    await audit.record(
+        "kb.refresh",
+        f"KB snapshot {snapshot_dir.name} fetched",
+        detail={"content_hash": snapshot_dir.name, "fetched_at": manifest.get("fetched_at")},
+    )
+    return manifest
 
 
 @router.get("/snapshots")

@@ -2,8 +2,10 @@ import argparse
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.assurance import router as assurance_router
+from app.api.audit import router as audit_router
 from app.api.cri import router as cri_router
 from app.api.cri import snapshots_router as cri_snapshots_router
 from app.api.enumeration import router as enumeration_router
@@ -41,6 +43,14 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Ground-Truth Threat Modelling Platform", lifespan=lifespan)
+    settings = get_settings()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=False,  # no auth/cookies in v1 -- nothing to carry cross-origin
+        allow_methods=["GET", "POST", "PATCH", "DELETE"],
+        allow_headers=["content-type"],
+    )
     app.include_router(runs_router)
     app.include_router(projects_router)
     app.include_router(kb_router)
@@ -58,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(assurance_router)
     app.include_router(review_router)
     app.include_router(reports_router)
+    app.include_router(audit_router)
     return app
 
 

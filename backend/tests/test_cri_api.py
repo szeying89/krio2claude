@@ -52,6 +52,19 @@ async def test_cri_profile_missing_mode_returns_404(client):
 
 
 @pytest.mark.asyncio
+async def test_upload_cri_profile_rejects_oversized_file(client, monkeypatch):
+    project_id = await _create_project(client)
+
+    monkeypatch.setenv("TM_MAX_UPLOAD_BYTES", "10")
+    upload = await client.post(
+        f"/projects/{project_id}/cri-profile",
+        files={"file": ("big.xlsx", b"x" * 1000, "application/octet-stream")},
+    )
+    assert upload.status_code == 422
+    assert "exceeding" in upload.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_upload_to_missing_project_404(client):
     resp = await client.post(
         "/projects/does-not-exist/cri-profile",

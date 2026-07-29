@@ -3,8 +3,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.api.deps import get_llm_gateway, get_project_service, get_system_model_service
+from app.api.deps import (
+    get_audit_log_service,
+    get_llm_gateway,
+    get_project_service,
+    get_system_model_service,
+)
 from app.core.config import get_settings
+from app.services.audit.service import AuditLogService
 from app.services.llm.gateway import LLMGateway
 from app.services.llm.models import CompletionParams
 from app.services.project_service import ProjectNotFoundError, ProjectService
@@ -179,6 +185,7 @@ async def freeze_system_model(
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
     gateway: LLMGateway = Depends(get_llm_gateway),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> SystemModelOut:
     try:
         await project_service.get_project(project_id)
@@ -188,6 +195,12 @@ async def freeze_system_model(
     settings = get_settings()
     params = CompletionParams(model=settings.llm_model)
     model = await model_service.freeze(project_id, gateway, params)
+    await audit.record(
+        "model.frozen",
+        f"system model frozen at version {model.version}",
+        project_id=project_id,
+        detail={"version": model.version},
+    )
     return _model_out(model)
 
 
@@ -234,6 +247,7 @@ async def edit_system_model(
     project_id: str,
     body: ModelEditsIn,
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> SystemModelOut:
     edits = DomainModelEdits(
         components=body.components,
@@ -247,6 +261,18 @@ async def edit_system_model(
         raise HTTPException(status_code=404, detail="no system model has been frozen yet") from exc
     except UnknownElementError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await audit.record(
+        "model.edited",
+        f"system model manually edited, now at version {model.version}",
+        project_id=project_id,
+        detail={
+            "version": model.version,
+            "component_edits": len(body.components),
+            "dataflow_edits": len(body.dataflows),
+            "asset_edits": len(body.assets),
+            "trust_zone_edits": len(body.trust_zones),
+        },
+    )
     return _model_out(model)
 
 

@@ -1,3 +1,4 @@
+from app.models.audit import AuditLogEntry  # noqa: F401
 from app.models.project import DesignDocument, ImpactTiering, Project  # noqa: F401
 from app.models.review import ReviewAuditEntry, ReviewItemRecord  # noqa: F401
 from app.models.revision import ThreatModelRevision  # noqa: F401

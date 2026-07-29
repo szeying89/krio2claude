@@ -1,7 +1,10 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 
 from app.api.deps import (
+    get_audit_log_service,
     get_llm_gateway,
     get_project_cri_service,
     get_project_revision_service,
@@ -13,6 +16,7 @@ from app.core.config import get_settings
 from app.orchestrator.orchestrator import Orchestrator, ValidationError
 from app.orchestrator.registry import AgentRegistry
 from app.services.assurance.rubric import compute_coverage_report
+from app.services.audit.service import AuditLogService
 from app.services.cri.db_service import CRIProfileNotUploadedError, ProjectCRIService
 from app.services.enumeration.agent import (
     AGENT_NAME as ENUMERATION_AGENT_NAME,
@@ -66,12 +70,27 @@ _RULESET = load_ruleset()
 _AUDIENCES = ("executive", "ciso", "technical")
 
 
+async def _record_agent_invocation(audit: AuditLogService, project_id: str, agent_name: str, result: Any) -> None:
+    await audit.record(
+        "agent.invoked",
+        f"{agent_name} agent invoked ({len(result.trajectory.tool_calls)} tool calls)",
+        project_id=project_id,
+        detail={
+            "agent_name": agent_name,
+            "tool_call_count": len(result.trajectory.tool_calls),
+            "cache_hit": result.cache_hit,
+            "latency_ms": result.trajectory.latency_ms,
+        },
+    )
+
+
 async def _gather_report_data(
     project: Project,
     model: SystemModel,
     cri_service: ProjectCRIService,
     revision_service: ProjectRevisionService,
     gateway: LLMGateway,
+    audit: AuditLogService,
 ) -> ReportData:
     cri_statements = await cri_statements_with_bridge(cri_service, project.id)
     tiering = await cri_service.get_tiering(project.id)
@@ -127,6 +146,7 @@ async def _gather_report_data(
         adjudicated_threats = enum_result.output_artifacts["adjudicated_threats"]
         rejection_log = enum_result.output_artifacts["rejection_log"]
         candidate_count = enum_result.output_artifacts["candidate_count"]
+        await _record_agent_invocation(audit, project.id, ENUMERATION_AGENT_NAME, enum_result)
 
         mitigation_registry = AgentRegistry()
         mitigation_registry.register(build_mitigation_agent(gateway, params))
@@ -143,6 +163,7 @@ async def _gather_report_data(
             },
         )
         recommendations = mitigation_result.output_artifacts["recommendations"]
+        await _record_agent_invocation(audit, project.id, MITIGATION_AGENT_NAME, mitigation_result)
         if recommendations:
             comparison = compute_residual_risk(
                 path_result, gaps, recommendations, project.business_criticality, tier,
@@ -217,13 +238,25 @@ async def _get_project_and_model(
     return project, model
 
 
-async def _build_narratives(data: ReportData, gateway: LLMGateway) -> dict[str, str]:
+async def _build_narratives(
+    data: ReportData, gateway: LLMGateway, audit: AuditLogService, project_id: str
+) -> dict[str, str]:
     settings = get_settings()
     params = CompletionParams(model=settings.llm_model)
     registry = AgentRegistry()
     registry.register(build_reporting_agent(gateway, params))
     orchestrator = Orchestrator(registry, validate=validate_reporting_fact_provenance)
     result = orchestrator.invoke(REPORTING_AGENT_NAME, {"report_data": data})
+    await audit.record(
+        "agent.invoked",
+        f"{REPORTING_AGENT_NAME} agent invoked ({len(result.trajectory.tool_calls)} tool calls)",
+        project_id=project_id,
+        detail={
+            "agent_name": REPORTING_AGENT_NAME,
+            "tool_call_count": len(result.trajectory.tool_calls),
+            "cache_hit": result.cache_hit,
+        },
+    )
     return dict(result.output_artifacts["narratives"])
 
 
@@ -241,14 +274,15 @@ async def get_report(
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
     revision_service: ProjectRevisionService = Depends(get_project_revision_service),
     gateway: LLMGateway = Depends(get_llm_gateway),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> ReportOut:
     if audience not in _AUDIENCES:
         raise HTTPException(status_code=404, detail=f"unknown audience {audience!r}")
     project, model = await _get_project_and_model(project_id, project_service, model_service)
 
     try:
-        data = await _gather_report_data(project, model, cri_service, revision_service, gateway)
-        narratives = await _build_narratives(data, gateway)
+        data = await _gather_report_data(project, model, cri_service, revision_service, gateway, audit)
+        narratives = await _build_narratives(data, gateway, audit, project_id)
     except (AttackGraphBudgetExceededError, PathEnumerationBudgetExceededError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -258,6 +292,12 @@ async def get_report(
 
     narrative = narratives.get(audience, "")
     markdown = RENDERERS[audience](data, narrative)
+    await audit.record(
+        "export.generated",
+        f"{audience} markdown report generated",
+        project_id=project_id,
+        detail={"format": "markdown", "audience": audience},
+    )
     return ReportOut(audience=audience, markdown=markdown)
 
 
@@ -270,14 +310,15 @@ async def get_report_pdf(
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
     revision_service: ProjectRevisionService = Depends(get_project_revision_service),
     gateway: LLMGateway = Depends(get_llm_gateway),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> Response:
     if audience not in _AUDIENCES:
         raise HTTPException(status_code=404, detail=f"unknown audience {audience!r}")
     project, model = await _get_project_and_model(project_id, project_service, model_service)
 
     try:
-        data = await _gather_report_data(project, model, cri_service, revision_service, gateway)
-        narratives = await _build_narratives(data, gateway)
+        data = await _gather_report_data(project, model, cri_service, revision_service, gateway, audit)
+        narratives = await _build_narratives(data, gateway, audit, project_id)
     except (AttackGraphBudgetExceededError, PathEnumerationBudgetExceededError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except ValidationError as exc:
@@ -288,6 +329,12 @@ async def get_report_pdf(
     narrative = narratives.get(audience, "")
     markdown = RENDERERS[audience](data, narrative)
     pdf_bytes = markdown_to_pdf_bytes(f"{project.name} — {audience.title()} Report", markdown)
+    await audit.record(
+        "export.generated",
+        f"{audience} PDF report generated",
+        project_id=project_id,
+        detail={"format": "pdf", "audience": audience},
+    )
     return Response(content=pdf_bytes, media_type="application/pdf")
 
 
@@ -296,9 +343,14 @@ async def get_otm_export(
     project_id: str,
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> dict:
     _, model = await _get_project_and_model(project_id, project_service, model_service)
-    return export_otm(model)
+    document = export_otm(model)
+    await audit.record(
+        "export.generated", "OTM export generated", project_id=project_id, detail={"format": "otm"}
+    )
+    return document
 
 
 @router.get("/{project_id}/exports/csv")
@@ -309,12 +361,17 @@ async def get_csv_export(
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
     revision_service: ProjectRevisionService = Depends(get_project_revision_service),
     gateway: LLMGateway = Depends(get_llm_gateway),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> Response:
     project, model = await _get_project_and_model(project_id, project_service, model_service)
     try:
-        data = await _gather_report_data(project, model, cri_service, revision_service, gateway)
+        data = await _gather_report_data(project, model, cri_service, revision_service, gateway, audit)
     except (AttackGraphBudgetExceededError, PathEnumerationBudgetExceededError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await audit.record(
+        "export.generated", "CSV findings register generated", project_id=project_id,
+        detail={"format": "csv"},
+    )
     return Response(content=export_csv(data), media_type="text/csv")
 
 
@@ -326,10 +383,14 @@ async def get_json_export(
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
     revision_service: ProjectRevisionService = Depends(get_project_revision_service),
     gateway: LLMGateway = Depends(get_llm_gateway),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> Response:
     project, model = await _get_project_and_model(project_id, project_service, model_service)
     try:
-        data = await _gather_report_data(project, model, cri_service, revision_service, gateway)
+        data = await _gather_report_data(project, model, cri_service, revision_service, gateway, audit)
     except (AttackGraphBudgetExceededError, PathEnumerationBudgetExceededError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await audit.record(
+        "export.generated", "JSON export generated", project_id=project_id, detail={"format": "json"}
+    )
     return Response(content=export_json(data), media_type="application/json")

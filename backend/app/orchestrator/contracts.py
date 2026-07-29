@@ -31,6 +31,7 @@ class TrajectoryRecord:
     output_artifacts: dict[str, Any]
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     cache_hit: bool = False
+    latency_ms: float = 0.0
 
 
 class AgentContext:

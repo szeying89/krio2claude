@@ -84,6 +84,34 @@ def test_cache_miss_still_enforces_validation_gate():
     assert orchestrator.cache.get(key) is None
 
 
+def test_invocation_is_logged_with_agent_name_tool_calls_and_latency(caplog):
+    """Task 24: structured, greppable-per-agent logging of every
+    invocation. Cost isn't logged here -- it isn't captured by
+    TrajectoryRecord/ToolCallRecord at all (a documented limitation, see
+    IMPLEMENTATION_PLAN.md's Task 24 entry) -- but wall-clock latency and
+    tool-call count genuinely are, at this exact boundary."""
+
+    def handler(ctx: AgentContext) -> dict:
+        ctx.call_tool("noop", lambda: None)
+        return {"system_model": {}}
+
+    registry = make_registry_with_stub(handler, name="logged-agent")
+    orchestrator = Orchestrator(registry)
+
+    with caplog.at_level("INFO"):
+        result = orchestrator.invoke("logged-agent", {"design_doc": "x"})
+
+    assert result.trajectory.latency_ms >= 0.0
+    messages = [r.message for r in caplog.records]
+    assert any("logged-agent" in m and "cache_hit=False" in m and "tool_calls=1" in m for m in messages)
+
+    with caplog.at_level("INFO"):
+        cached_result = orchestrator.invoke("logged-agent", {"design_doc": "x"})
+    assert cached_result.cache_hit is True
+    messages = [r.message for r in caplog.records]
+    assert any("logged-agent" in m and "cache_hit=True" in m for m in messages)
+
+
 def test_budget_exceeded_raises_structured_error():
     def handler(ctx: AgentContext) -> dict:
         for _ in range(5):

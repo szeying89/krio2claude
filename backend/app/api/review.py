@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import (
+    get_audit_log_service,
     get_llm_gateway,
     get_project_cri_service,
     get_project_review_service,
@@ -26,6 +27,7 @@ from app.services.assurance.review_db_service import (
     ReviewItemAlreadyDecidedError,
     ReviewItemNotFoundError,
 )
+from app.services.audit.service import AuditLogService
 from app.services.cri.db_service import ProjectCRIService
 from app.services.enumeration.agent import (
     AGENT_NAME as ENUMERATION_AGENT_NAME,
@@ -133,6 +135,7 @@ async def generate_review_items(
     revision_service: ProjectRevisionService = Depends(get_project_revision_service),
     review_service: ProjectReviewService = Depends(get_project_review_service),
     gateway: LLMGateway = Depends(get_llm_gateway),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> list[ReviewItemOut]:
     try:
         project = await project_service.get_project(project_id)
@@ -183,6 +186,18 @@ async def generate_review_items(
         raise HTTPException(
             status_code=500, detail=f"central critique grounding gate rejected agent output: {exc}"
         ) from exc
+
+    await audit.record(
+        "agent.invoked",
+        f"{CRITIQUE_AGENT_NAME} agent invoked ({len(result.trajectory.tool_calls)} tool calls)",
+        project_id=project_id,
+        detail={
+            "agent_name": CRITIQUE_AGENT_NAME,
+            "tool_call_count": len(result.trajectory.tool_calls),
+            "cache_hit": result.cache_hit,
+            "latency_ms": result.trajectory.latency_ms,
+        },
+    )
 
     latest_revision = await revision_service.get_latest_revision(project_id)
     records = await review_service.create_review_items(
@@ -278,6 +293,7 @@ async def decide_review_item(
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
     revision_service: ProjectRevisionService = Depends(get_project_revision_service),
     review_service: ProjectReviewService = Depends(get_project_review_service),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> ReviewDecisionOut:
     if body.decision not in ("accept", "reject"):
         raise HTTPException(status_code=422, detail="decision must be 'accept' or 'reject'")
@@ -311,5 +327,17 @@ async def decide_review_item(
             cri_service,
             revision_service,
         )
+
+    # ReviewAuditEntry (Task 21) already carries the full, dedicated,
+    # append-only created->decided trail for this specific item, queryable
+    # via GET .../review-items/{id}/audit; this general-log entry places
+    # the same event on the one cross-cutting timeline alongside every
+    # other action type this log covers.
+    await audit.record(
+        "review.decided",
+        f"review item {item_id} {record.status}",
+        project_id=project_id,
+        detail={"item_id": item_id, "decision": body.decision, "reason": body.reason},
+    )
 
     return ReviewDecisionOut(item=_item_out(record), new_revision=new_revision_out)

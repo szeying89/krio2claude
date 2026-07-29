@@ -8,6 +8,7 @@ from app.db.base import get_database
 from app.orchestrator.events import EventBus, get_event_bus
 from app.orchestrator.run_service import RunService
 from app.services.assurance.review_db_service import ProjectReviewService
+from app.services.audit.service import AuditLogService
 from app.services.cri.db_service import ProjectCRIService
 from app.services.kb.refresh_service import KBRefreshService
 from app.services.llm.gateway import LLMGateway
@@ -73,6 +74,12 @@ async def get_project_review_service() -> AsyncIterator[ProjectReviewService]:
         yield ProjectReviewService(session)
 
 
+async def get_audit_log_service() -> AsyncIterator[AuditLogService]:
+    db = get_database()
+    async with db.session_factory() as session:
+        yield AuditLogService(session)
+
+
 def build_llm_provider(provider_name: str) -> LLMProvider:
     """Builds the real, network-calling provider for `provider_name` — raises
     `MissingAPIKeyError` (via `get_api_key`) if no credential is configured,
@@ -101,4 +108,4 @@ def get_llm_gateway() -> LLMGateway:
             status_code=503,
             detail=f"no LLM provider configured for model-building extraction: {exc}",
         ) from exc
-    return LLMGateway(provider, cache_dir=settings.llm_cache_dir)
+    return LLMGateway(provider, cache_dir=settings.llm_cache_dir, redact_before_send=True)

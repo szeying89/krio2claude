@@ -15,6 +15,7 @@ from app.services.cri.snapshot import read_manifest as read_cri_manifest
 from app.services.cri.tiering import QuestionAnswer, compute_tier
 from app.services.kb.heuristic_mapping import InferredMapping
 from app.services.kb.snapshot import latest_snapshot_dir as _latest_kb_snapshot_dir
+from app.services.upload_validation import validate_upload_size
 
 
 class ProjectNotFoundError(Exception):
@@ -44,6 +45,7 @@ class ProjectCRIService:
         self, project_id: str, filename: str, content: bytes
     ) -> dict[str, Any]:
         project = await self._get_project(project_id)
+        validate_upload_size(filename, content, self.settings.max_upload_bytes)
 
         kb_snapshot_dir = _latest_kb_snapshot_dir(self.settings.kb_dir)
         ingestion = CRIIngestionService(self.settings.cri_dir)

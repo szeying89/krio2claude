@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
-from app.api.deps import get_project_cri_service
+from app.api.deps import get_audit_log_service, get_project_cri_service
 from app.api.schemas import ImpactTieringOut, ImpactTieringRequest
 from app.core.config import get_settings
+from app.services.audit.service import AuditLogService
 from app.services.cri.db_service import (
     CRIProfileNotUploadedError,
     ProjectCRIService,
@@ -11,6 +12,7 @@ from app.services.cri.db_service import (
 from app.services.cri.snapshot import read_manifest as read_cri_manifest
 from app.services.cri.tiering import QuestionAnswer, TieringError
 from app.services.cri.workbook_parser import CRIWorkbookParseError
+from app.services.upload_validation import UploadValidationError
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["cri"])
 snapshots_router = APIRouter(prefix="/cri/snapshots", tags=["cri"])
@@ -29,14 +31,26 @@ async def upload_cri_profile(
     project_id: str,
     file: UploadFile,
     service: ProjectCRIService = Depends(get_project_cri_service),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> dict:
     content = await file.read()
     try:
-        return await service.upload_cri_profile(project_id, file.filename or "cri-profile.xlsx", content)
+        manifest = await service.upload_cri_profile(
+            project_id, file.filename or "cri-profile.xlsx", content
+        )
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="project not found") from exc
+    except UploadValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except CRIWorkbookParseError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await audit.record(
+        "cri.upload",
+        f"CRI profile uploaded ({manifest.get('statement_count')} statements)",
+        project_id=project_id,
+        detail={"content_hash": manifest.get("content_hash")},
+    )
+    return manifest
 
 
 @router.get("/cri-profile")
@@ -74,6 +88,7 @@ async def submit_impact_tiering(
     project_id: str,
     body: ImpactTieringRequest,
     service: ProjectCRIService = Depends(get_project_cri_service),
+    audit: AuditLogService = Depends(get_audit_log_service),
 ) -> ImpactTieringOut:
     answers = [QuestionAnswer(a.question_id, a.answer, a.justification) for a in body.answers]
     try:
@@ -83,6 +98,12 @@ async def submit_impact_tiering(
     except TieringError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    await audit.record(
+        "cri.tiering_answered",
+        f"impact tiering computed: tier {record.tier}",
+        project_id=project_id,
+        detail={"tier": record.tier, "triggering_question_id": record.triggering_question_id},
+    )
     return ImpactTieringOut.model_validate(record)
 
 
