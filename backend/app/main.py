@@ -14,6 +14,7 @@ from app.api.mitigation import router as mitigation_router
 from app.api.modelbuilding import router as modelbuilding_router
 from app.api.projects import router as projects_router
 from app.api.retrieval import router as retrieval_router
+from app.api.review import router as review_router
 from app.api.revisions import router as revisions_router
 from app.api.risk import router as risk_router
 from app.api.runs import router as runs_router
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     app.include_router(intel_router)
     app.include_router(revisions_router)
     app.include_router(assurance_router)
+    app.include_router(review_router)
     return app
 
 

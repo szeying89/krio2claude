@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.db.base import get_database
 from app.orchestrator.events import EventBus, get_event_bus
 from app.orchestrator.run_service import RunService
+from app.services.assurance.review_db_service import ProjectReviewService
 from app.services.cri.db_service import ProjectCRIService
 from app.services.kb.refresh_service import KBRefreshService
 from app.services.llm.gateway import LLMGateway
@@ -64,6 +65,12 @@ async def get_project_revision_service() -> AsyncIterator[ProjectRevisionService
     db = get_database()
     async with db.session_factory() as session:
         yield ProjectRevisionService(session)
+
+
+async def get_project_review_service() -> AsyncIterator[ProjectReviewService]:
+    db = get_database()
+    async with db.session_factory() as session:
+        yield ProjectReviewService(session)
 
 
 def build_llm_provider(provider_name: str) -> LLMProvider:

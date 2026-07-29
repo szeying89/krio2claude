@@ -117,7 +117,7 @@ async def _load_intel_inputs(content_hashes: list[str], model, settings) -> list
     return inputs
 
 
-async def _create_revision(
+async def create_revision_for_project(
     project_id: str,
     body: RevisionCreateIn,
     project_service: ProjectService,
@@ -199,7 +199,7 @@ async def create_revision(
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
     revision_service: ProjectRevisionService = Depends(get_project_revision_service),
 ) -> RevisionOut:
-    return await _create_revision(
+    return await create_revision_for_project(
         project_id, body, project_service, model_service, cri_service, revision_service
     )
 
