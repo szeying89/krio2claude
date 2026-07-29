@@ -10,8 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.models.project import ImpactTiering, Project
 from app.services.cri.ingestion_service import CRIIngestionService
+from app.services.cri.snapshot import read_inferred_mappings as _read_cri_inferred_mappings
 from app.services.cri.snapshot import read_manifest as read_cri_manifest
 from app.services.cri.tiering import QuestionAnswer, compute_tier
+from app.services.kb.heuristic_mapping import InferredMapping
 from app.services.kb.snapshot import latest_snapshot_dir as _latest_kb_snapshot_dir
 
 
@@ -74,6 +76,13 @@ class ProjectCRIService:
         if tier is not None:
             statements = [s for s in statements if tier in s["applicable_tiers"]]
         return statements
+
+    async def get_inferred_mappings(self, project_id: str) -> dict[str, list[InferredMapping]]:
+        project = await self._get_project(project_id)
+        if not project.cri_snapshot_hash:
+            raise CRIProfileNotUploadedError(project_id)
+        snapshot_dir = self.settings.cri_dir / project.cri_snapshot_hash
+        return _read_cri_inferred_mappings(snapshot_dir)
 
     async def compute_tiering(
         self, project_id: str, answers: list[QuestionAnswer]

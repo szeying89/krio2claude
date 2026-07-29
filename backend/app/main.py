@@ -8,6 +8,7 @@ from app.api.cri import snapshots_router as cri_snapshots_router
 from app.api.enumeration import router as enumeration_router
 from app.api.kb import router as kb_router
 from app.api.mermaid import router as mermaid_router
+from app.api.mitigation import router as mitigation_router
 from app.api.modelbuilding import router as modelbuilding_router
 from app.api.projects import router as projects_router
 from app.api.retrieval import router as retrieval_router
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(modelbuilding_router)
     app.include_router(systemmodel_router)
     app.include_router(enumeration_router)
+    app.include_router(mitigation_router)
     return app
 
 

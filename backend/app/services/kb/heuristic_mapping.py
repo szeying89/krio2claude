@@ -53,7 +53,7 @@ class InferredMapping:
     matched_terms: tuple[str, ...]
 
 
-def _tokenize(text: str) -> set[str]:
+def tokenize(text: str) -> set[str]:
     tokens = {w for w in _WORD_RE.findall(text.lower()) if len(w) >= _MIN_TOKEN_LEN}
     return tokens - _STOPWORDS
 
@@ -68,11 +68,11 @@ def infer_technique_mappings(
     # Match against technique *names* only (not full descriptions) — names
     # are short and specific, so a 2+ token overlap is a meaningful signal;
     # matching against full descriptions would drown in noise.
-    technique_tokens = [(t, _tokenize(t.name)) for t in techniques]
+    technique_tokens = [(t, tokenize(t.name)) for t in techniques]
 
     results: dict[str, list[InferredMapping]] = {}
     for source in sources:
-        source_tokens = _tokenize(f"{source.name} {source.text}")
+        source_tokens = tokenize(f"{source.name} {source.text}")
         if not source_tokens:
             continue
         matches: list[InferredMapping] = []

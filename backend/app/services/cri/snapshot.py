@@ -145,3 +145,21 @@ def write_snapshot(
 
 def read_manifest(snapshot_dir: Path) -> dict[str, Any]:
     return json.loads((snapshot_dir / "manifest.json").read_text())
+
+
+def read_inferred_mappings(snapshot_dir: Path) -> dict[str, list[InferredMapping]]:
+    """The heuristic CRI->ATT&CK bridge, keyed by statement profile_id —
+    stored separately from statements.json (see module docstring) since it
+    describes a (catalog, KB snapshot) pairing rather than the catalog's
+    own immutable content."""
+    path = snapshot_dir / "inferred_mappings.json"
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    return {
+        profile_id: [
+            InferredMapping(technique_id=m["technique_id"], matched_terms=tuple(m["matched_terms"]))
+            for m in mappings
+        ]
+        for profile_id, mappings in data.items()
+    }
