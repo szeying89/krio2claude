@@ -21,6 +21,7 @@ from app.services.systemmodel.models import (
     Asset,
     Component,
     Dataflow,
+    DeclaredControl,
     OutOfScopeDeclaration,
     SystemModel,
     TrustZone,
@@ -49,6 +50,7 @@ def to_otm(model: SystemModel) -> dict[str, Any]:
         "components": [_component_to_otm(c) for c in model.components],
         "dataflows": [_dataflow_to_otm(f) for f in model.dataflows],
         "assets": [_asset_to_otm(a) for a in model.assets],
+        "mitigations": [_declared_control_to_otm(c) for c in model.declared_controls],
     }
 
 
@@ -117,6 +119,26 @@ def _asset_to_otm(asset: Asset) -> dict[str, Any]:
     }
 
 
+def _declared_control_to_otm(control: DeclaredControl) -> dict[str, Any]:
+    """Maps onto OTM's native `mitigation` object — a reasonable semantic
+    fit for "a declared control" — with `riskReduction` defaulted to 0
+    (undetermined; this platform doesn't compute a risk-reduction
+    percentage) and `applies_to_ids`/`provenance` carried in `attributes`
+    since OTM expresses control-to-threat linkage at the per-threat level,
+    which this model doesn't track that granularly."""
+    return {
+        "id": control.id,
+        "name": control.name,
+        "riskReduction": 0,
+        "attributes": {
+            "tm_platform": {
+                "applies_to_ids": list(control.applies_to_ids),
+                "provenance": control.provenance,
+            }
+        },
+    }
+
+
 def _out_of_scope_to_otm(declaration: OutOfScopeDeclaration) -> dict[str, Any]:
     return {
         "id": declaration.id,
@@ -141,6 +163,7 @@ def from_otm(otm: dict[str, Any]) -> SystemModel:
     components = [_component_from_otm(c) for c in otm.get("components", [])]
     dataflows = [_dataflow_from_otm(f) for f in otm.get("dataflows", [])]
     assets = [_asset_from_otm(a) for a in otm.get("assets", [])]
+    declared_controls = [_declared_control_from_otm(m) for m in otm.get("mitigations", [])]
     out_of_scope = [
         OutOfScopeDeclaration(
             id=o["id"],
@@ -162,6 +185,7 @@ def from_otm(otm: dict[str, Any]) -> SystemModel:
         dataflows=dataflows,
         assets=assets,
         out_of_scope=out_of_scope,
+        declared_controls=declared_controls,
         change_summary=list(project_attrs.get("change_summary", [])),
         created_at=datetime.fromisoformat(created_at_raw) if created_at_raw else None,
     )
@@ -204,6 +228,16 @@ def _dataflow_from_otm(otm_flow: dict[str, Any]) -> Dataflow:
         protocol=attrs.get("protocol"),
         authenticated=attrs.get("authenticated"),
         encrypted=attrs.get("encrypted"),
+        provenance=attrs.get("provenance", "agent_generated"),
+    )
+
+
+def _declared_control_from_otm(otm_mitigation: dict[str, Any]) -> DeclaredControl:
+    attrs = _tm_attrs(otm_mitigation)
+    return DeclaredControl(
+        id=otm_mitigation["id"],
+        name=otm_mitigation["name"],
+        applies_to_ids=tuple(attrs.get("applies_to_ids", [])),
         provenance=attrs.get("provenance", "agent_generated"),
     )
 

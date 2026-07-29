@@ -4,6 +4,7 @@ from app.services.systemmodel.models import (
     Asset,
     Component,
     Dataflow,
+    DeclaredControl,
     OutOfScopeDeclaration,
     SystemModel,
     TrustZone,
@@ -70,6 +71,11 @@ def _full_model() -> SystemModel:
                 id="oos-c2", subject_id="c2", category="ot_ics", indicator="scada", reason="..."
             )
         ],
+        declared_controls=[
+            DeclaredControl(
+                id="control-mfa", name="MFA", applies_to_ids=("c1",), provenance="user_asserted"
+            )
+        ],
         change_summary=["initial version"],
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
@@ -118,6 +124,25 @@ def test_round_trip_preserves_out_of_scope_flag_and_reason():
     assert flagged.out_of_scope_reason == "OT/ICS indicator detected: 'scada'"
     assert len(restored.out_of_scope) == 1
     assert restored.out_of_scope[0].category == "ot_ics"
+
+
+def test_declared_controls_map_onto_otm_mitigations():
+    otm = to_otm(_full_model())
+    assert len(otm["mitigations"]) == 1
+    mitigation = otm["mitigations"][0]
+    assert mitigation["id"] == "control-mfa"
+    assert mitigation["name"] == "MFA"
+    assert "riskReduction" in mitigation
+
+
+def test_round_trip_preserves_declared_controls():
+    model = _full_model()
+    restored = from_otm(to_otm(model))
+    assert len(restored.declared_controls) == 1
+    control = restored.declared_controls[0]
+    assert control.name == "MFA"
+    assert control.applies_to_ids == ("c1",)
+    assert control.provenance == "user_asserted"
 
 
 def test_otm_document_is_json_serializable():

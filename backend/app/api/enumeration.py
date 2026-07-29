@@ -19,6 +19,11 @@ from app.services.enumeration.bridge import (
 )
 from app.services.enumeration.engine import enumerate_threats
 from app.services.enumeration.matrix import EnumerationResult, build_enumeration_result
+from app.services.enumeration.path_enumeration import (
+    AttackPath,
+    PathEnumerationBudgetExceededError,
+    enumerate_paths,
+)
 from app.services.enumeration.ruleset import load_ruleset
 from app.services.kb.snapshot import latest_snapshot_dir, read_techniques
 from app.services.project_service import ProjectNotFoundError, ProjectService
@@ -359,4 +364,107 @@ async def get_attack_graph_for_version(
     try:
         return _attack_graph_out(_build_graph_for_model(model, project.atlas_enabled))
     except AttackGraphBudgetExceededError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class PathStepOut(BaseModel):
+    source_entity_id: str
+    target_entity_id: str
+    category: str
+    technique_id: str
+    technique_name: str
+    matrix: str
+    tactic: str
+    dataflow_id: str
+    candidate_threat_id: str
+    likelihood: float
+
+
+class AttackPathOut(BaseModel):
+    id: str
+    entry_point: str
+    target: str
+    steps: list[PathStepOut]
+    tactic_sequence: list[str]
+    aggregate_likelihood: float
+
+
+class PathEnumerationOut(BaseModel):
+    paths: list[AttackPathOut]
+    capped: bool
+
+
+def _attack_path_out(path: AttackPath) -> AttackPathOut:
+    return AttackPathOut(
+        id=path.id,
+        entry_point=path.entry_point,
+        target=path.target,
+        steps=[
+            PathStepOut(
+                source_entity_id=s.source_entity_id,
+                target_entity_id=s.target_entity_id,
+                category=s.category,
+                technique_id=s.technique_id,
+                technique_name=s.technique_name,
+                matrix=s.matrix,
+                tactic=s.tactic,
+                dataflow_id=s.dataflow_id,
+                candidate_threat_id=s.candidate_threat_id,
+                likelihood=s.likelihood,
+            )
+            for s in path.steps
+        ],
+        tactic_sequence=list(path.tactic_sequence),
+        aggregate_likelihood=path.aggregate_likelihood,
+    )
+
+
+def _enumerate_paths_for_model(model: SystemModel, atlas_enabled: bool) -> PathEnumerationOut:
+    graph = _build_graph_for_model(model, atlas_enabled)
+    result = enumerate_paths(graph, model)
+    return PathEnumerationOut(
+        paths=[_attack_path_out(p) for p in result.paths], capped=result.capped
+    )
+
+
+@router.get("/{project_id}/system-model/attack-paths", response_model=PathEnumerationOut)
+async def get_latest_attack_paths(
+    project_id: str,
+    project_service: ProjectService = Depends(get_project_service),
+    model_service: ProjectSystemModelService = Depends(get_system_model_service),
+) -> PathEnumerationOut:
+    try:
+        project = await project_service.get_project(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="project not found") from exc
+    try:
+        model = await model_service.get_latest(project_id)
+    except SystemModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="no system model has been frozen yet") from exc
+    try:
+        return _enumerate_paths_for_model(model, project.atlas_enabled)
+    except (AttackGraphBudgetExceededError, PathEnumerationBudgetExceededError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{project_id}/system-model/versions/{version}/attack-paths", response_model=PathEnumerationOut
+)
+async def get_attack_paths_for_version(
+    project_id: str,
+    version: int,
+    project_service: ProjectService = Depends(get_project_service),
+    model_service: ProjectSystemModelService = Depends(get_system_model_service),
+) -> PathEnumerationOut:
+    try:
+        project = await project_service.get_project(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="project not found") from exc
+    try:
+        model = await model_service.get_version(project_id, version)
+    except SystemModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="system model version not found") from exc
+    try:
+        return _enumerate_paths_for_model(model, project.atlas_enabled)
+    except (AttackGraphBudgetExceededError, PathEnumerationBudgetExceededError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

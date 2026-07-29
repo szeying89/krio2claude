@@ -459,3 +459,61 @@ async def test_attack_graph_for_missing_version_404(client, tmp_path):
         assert resp.status_code == 404
     finally:
         app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_attack_paths_before_any_freeze_is_404(client):
+    resp = await client.post("/projects", json=VALID_PROJECT)
+    project_id = resp.json()["id"]
+    result = await client.get(f"/projects/{project_id}/system-model/attack-paths")
+    assert result.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_attack_paths_reports_entry_point_target_and_steps(client, tmp_path):
+    from app.main import app
+
+    kb_dir = get_settings().kb_dir
+    _write_capec_mapped_kb_snapshot(kb_dir)
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        paths_resp = await client.get(f"/projects/{project_id}/system-model/attack-paths")
+        assert paths_resp.status_code == 200
+        body = paths_resp.json()
+        assert isinstance(body["paths"], list)
+        assert isinstance(body["capped"], bool)
+        if body["paths"]:
+            path = body["paths"][0]
+            assert 0 < path["aggregate_likelihood"] <= 1.0
+            assert len(path["tactic_sequence"]) == len(path["steps"])
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_attack_paths_for_missing_version_404(client, tmp_path):
+    from app.main import app
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        resp = await client.get(f"/projects/{project_id}/system-model/versions/99/attack-paths")
+        assert resp.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)

@@ -63,6 +63,7 @@ class TechniqueIndex:
     name_by_technique: dict[str, str]
     matrix_by_technique: dict[str, str]
     description_by_technique: dict[str, str]
+    tactics_by_technique: dict[str, tuple[str, ...]]
 
 
 def build_technique_index(chunks: list[TechniqueChunk]) -> TechniqueIndex:
@@ -72,6 +73,7 @@ def build_technique_index(chunks: list[TechniqueChunk]) -> TechniqueIndex:
         name_by_technique={c.id: c.name for c in chunks},
         matrix_by_technique={c.id: c.matrix for c in chunks},
         description_by_technique={c.id: c.description for c in chunks},
+        tactics_by_technique={c.id: c.tactics for c in chunks},
     )
 
 

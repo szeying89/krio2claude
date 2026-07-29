@@ -1,4 +1,5 @@
 from app.services.modelbuilding.models import (
+    DeclaredControl,
     ModelActor,
     ModelAsset,
     ModelComponent,
@@ -159,3 +160,34 @@ def test_freeze_is_deterministic_for_identical_input():
     model1 = freeze_draft(draft, model_id="proj1")
     model2 = freeze_draft(draft, model_id="proj1")
     assert model1 == model2
+
+
+def test_freeze_carries_over_declared_controls():
+    draft = SystemModelDraft(
+        components=[
+            ModelComponent(
+                id="c1",
+                name="Auth Service",
+                kind="process",
+                trust_zone_id=None,
+                technology_tags=(),
+                source="mermaid",
+                source_spans=(_span(),),
+            )
+        ],
+        declared_controls=[
+            DeclaredControl(
+                id="control-mfa",
+                name="MFA",
+                applies_to_ids=("c1",),
+                source="prose",
+                source_spans=(_span(),),
+            )
+        ],
+    )
+    model = freeze_draft(draft, model_id="proj1")
+    assert len(model.declared_controls) == 1
+    control = model.declared_controls[0]
+    assert control.name == "MFA"
+    assert control.applies_to_ids == ("c1",)
+    assert control.provenance == "agent_generated"

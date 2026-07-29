@@ -52,10 +52,13 @@ class Precondition:
 @dataclass(frozen=True)
 class AttackGraphEdgeData:
     dataflow_id: str
+    category: str
     technique_id: str
     technique_name: str
     matrix: str
     capec_ids: tuple[str, ...]
+    fused_score: float
+    tactic: str
     candidate_threat_id: str
     preconditions: tuple[Precondition, ...]
     citation: str
@@ -166,14 +169,13 @@ def build_attack_graph(
         flows_by_source.setdefault(flow.source_id, []).append(flow)
 
     graph: nx.MultiDiGraph = nx.MultiDiGraph()
-    best_privilege: dict[tuple[str, str], PrivilegeLevel] = {}
+    seeded: set[AttackGraphNode] = set()
     queue: deque[AttackGraphNode] = deque()
 
     def _seed(node: AttackGraphNode) -> None:
-        key = (node.entity_id, node.attacker_position)
-        if key in best_privilege:
+        if node in seeded:
             return
-        best_privilege[key] = node.privilege_level
+        seeded.add(node)
         if graph.number_of_nodes() >= node_budget:
             raise AttackGraphBudgetExceededError("node", node_budget)
         graph.add_node(node)
@@ -219,17 +221,21 @@ def build_attack_graph(
 
                 target_privilege = _next_privilege(candidate.category, current.privilege_level)
                 new_position = target_component.trust_zone_id
-                key = (target_id, new_position)
-                if key in best_privilege and best_privilege[key] >= target_privilege:
-                    continue  # no improvement over an already-reached state
-
-                is_new_state = best_privilege.get(key, PrivilegeLevel.NONE) < target_privilege
-                best_privilege[key] = target_privilege
                 target_node = AttackGraphNode(target_id, new_position, target_privilege)
-                if target_node not in graph:
+
+                is_new_node = target_node not in graph
+                if is_new_node:
                     if graph.number_of_nodes() >= node_budget:
                         raise AttackGraphBudgetExceededError("node", node_budget)
                     graph.add_node(target_node)
+                elif nx.has_path(graph, target_node, current):
+                    # target_node already exists and is an ancestor of
+                    # `current` — adding this edge would close a cycle, so
+                    # skip it; a genuinely new node can never be its own
+                    # ancestor, so this check only ever applies when
+                    # fanning back into an already-visited state, not when
+                    # multiple unrelated predecessors fan into a fresh one.
+                    continue
 
                 boundary = check_boundary_crossing(
                     components_by_id[current.entity_id].trust_zone_id, new_position
@@ -245,10 +251,16 @@ def build_attack_graph(
                         key=technique.technique_id,
                         data=AttackGraphEdgeData(
                             dataflow_id=flow.id,
+                            category=candidate.category,
                             technique_id=technique.technique_id,
                             technique_name=technique.technique_name,
                             matrix=technique.matrix,
                             capec_ids=technique.capec_ids,
+                            fused_score=technique.fused_score,
+                            tactic=(
+                                index.tactics_by_technique.get(technique.technique_id, ("unknown",))
+                                or ("unknown",)
+                            )[0],
                             candidate_threat_id=candidate.id,
                             preconditions=preconditions,
                             citation=index.description_by_technique.get(
@@ -257,7 +269,7 @@ def build_attack_graph(
                         ),
                     )
 
-                if is_new_state:
+                if is_new_node:
                     queue.append(target_node)
 
     entry_points = tuple(sorted(external_actor_ids))

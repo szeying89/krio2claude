@@ -78,6 +78,13 @@ class OutOfScopeOut(BaseModel):
     reason: str
 
 
+class DeclaredControlOut(BaseModel):
+    id: str
+    name: str
+    applies_to_ids: list[str]
+    provenance: str
+
+
 class SystemModelOut(BaseModel):
     id: str
     version: int
@@ -87,6 +94,7 @@ class SystemModelOut(BaseModel):
     dataflows: list[DataflowOut]
     assets: list[AssetOut]
     out_of_scope: list[OutOfScopeOut]
+    declared_controls: list[DeclaredControlOut]
     change_summary: list[str]
 
 
@@ -151,6 +159,15 @@ def _model_out(model: SystemModel) -> SystemModelOut:
                 id=o.id, subject_id=o.subject_id, category=o.category, indicator=o.indicator, reason=o.reason
             )
             for o in model.out_of_scope
+        ],
+        declared_controls=[
+            DeclaredControlOut(
+                id=c.id,
+                name=c.name,
+                applies_to_ids=list(c.applies_to_ids),
+                provenance=c.provenance,
+            )
+            for c in model.declared_controls
         ],
         change_summary=list(model.change_summary),
     )

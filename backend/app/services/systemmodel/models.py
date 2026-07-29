@@ -80,6 +80,14 @@ class OutOfScopeDeclaration:
 
 
 @dataclass
+class DeclaredControl:
+    id: str
+    name: str
+    applies_to_ids: tuple[str, ...] = ()
+    provenance: Provenance = "agent_generated"
+
+
+@dataclass
 class SystemModel:
     id: str
     version: int
@@ -89,5 +97,6 @@ class SystemModel:
     dataflows: list[Dataflow] = field(default_factory=list)
     assets: list[Asset] = field(default_factory=list)
     out_of_scope: list[OutOfScopeDeclaration] = field(default_factory=list)
+    declared_controls: list[DeclaredControl] = field(default_factory=list)
     change_summary: list[str] = field(default_factory=list)
     created_at: datetime | None = None

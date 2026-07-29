@@ -16,6 +16,7 @@ from app.services.systemmodel.models import (
     Asset,
     Component,
     Dataflow,
+    DeclaredControl,
     SystemModel,
     TrustZone,
 )
@@ -129,9 +130,20 @@ def freeze_draft(draft: SystemModelDraft, model_id: str) -> SystemModel:
             )
         )
 
+    declared_controls = [
+        DeclaredControl(
+            id=c.id,
+            name=c.name,
+            applies_to_ids=c.applies_to_ids,
+            provenance="agent_generated",
+        )
+        for c in draft.declared_controls
+    ]
+
     change_summary.append(
         f"froze {len(components)} component(s), {len(dataflows)} dataflow(s), "
-        f"{len(assets)} asset(s), {len(trust_zones)} trust zone(s) from the model-building draft"
+        f"{len(assets)} asset(s), {len(trust_zones)} trust zone(s), "
+        f"{len(declared_controls)} declared control(s) from the model-building draft"
     )
 
     return SystemModel(
@@ -143,5 +155,6 @@ def freeze_draft(draft: SystemModelDraft, model_id: str) -> SystemModel:
         dataflows=dataflows,
         assets=assets,
         out_of_scope=[],
+        declared_controls=declared_controls,
         change_summary=change_summary,
     )
