@@ -50,6 +50,20 @@ def techniques_in_paths(result: PathEnumerationResult) -> set[str]:
     return {step.technique_id for path in result.paths for step in path.steps}
 
 
+def entities_by_technique(result: PathEnumerationResult) -> dict[str, tuple[str, ...]]:
+    """Which model entities (by id) a technique's steps actually touch —
+    Task 17's mitigation recommendations need this to write
+    entity-specific guidance grounded in the real model, not a generic
+    technique description."""
+    entities: dict[str, set[str]] = {}
+    for path in result.paths:
+        for step in path.steps:
+            entities.setdefault(step.technique_id, set()).update(
+                (step.source_entity_id, step.target_entity_id)
+            )
+    return {technique_id: tuple(sorted(ids)) for technique_id, ids in entities.items()}
+
+
 def _observed_ids(inventory: list[ControlInventoryEntry], attr: str) -> set[str]:
     ids: set[str] = set()
     for entry in inventory:
