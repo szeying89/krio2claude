@@ -20,7 +20,8 @@ from app.services.kb import fetchers as default_fetchers
 from app.services.kb.atlas import parse_atlas_data
 from app.services.kb.attack import parse_attack_enterprise_bundle
 from app.services.kb.capec import parse_capec_bundle
-from app.services.kb.d3fend import parse_d3fend_mappings
+from app.services.kb.d3fend import parse_d3fend_csv
+from app.services.kb.heuristic_mapping import HeuristicSource, infer_technique_mappings
 from app.services.kb.snapshot import merge_relationships, write_snapshot
 
 FetchResult = tuple[object, str, str]
@@ -46,17 +47,24 @@ class KBRefreshService:
         enterprise_bundle, enterprise_version, enterprise_url = self.fetch_attack_enterprise()
         atlas_data, atlas_version, atlas_url = self.fetch_atlas()
         capec_bundle, capec_version, capec_url = self.fetch_capec()
-        d3fend_rows, d3fend_version, d3fend_url = self.fetch_d3fend()
+        d3fend_csv_text, d3fend_version, d3fend_url = self.fetch_d3fend()
 
         enterprise_chunks = parse_attack_enterprise_bundle(enterprise_bundle)  # type: ignore[arg-type]
         atlas_chunks = parse_atlas_data(atlas_data)  # type: ignore[arg-type]
         capec_map = parse_capec_bundle(capec_bundle)  # type: ignore[arg-type]
-        d3fend_map = parse_d3fend_mappings(d3fend_rows)  # type: ignore[arg-type]
+        d3fend_catalog = parse_d3fend_csv(d3fend_csv_text)  # type: ignore[arg-type]
 
         chunks = enterprise_chunks + atlas_chunks
-        merged, unresolved_capec, unresolved_d3fend = merge_relationships(
-            chunks, capec_map, d3fend_map
-        )
+
+        # D3FEND's real export carries no ATT&CK mapping (see d3fend.py), so
+        # the bridge is a heuristic (lexical-overlap) inference rather than
+        # an authoritative source — every result is tagged accordingly.
+        d3fend_sources = [
+            HeuristicSource(id=t.id, name=t.name, text=t.definition) for t in d3fend_catalog
+        ]
+        d3fend_inferred = infer_technique_mappings(d3fend_sources, chunks)
+
+        merged, unresolved_capec = merge_relationships(chunks, capec_map, d3fend_inferred)
 
         versions = {
             "attack_enterprise": enterprise_version,
@@ -78,5 +86,6 @@ class KBRefreshService:
             source_urls,
             fetched_at=datetime.now(UTC).isoformat(),
             unresolved_capec=unresolved_capec,
-            unresolved_d3fend=unresolved_d3fend,
+            d3fend_catalog=d3fend_catalog,
+            d3fend_inferred=d3fend_inferred,
         )

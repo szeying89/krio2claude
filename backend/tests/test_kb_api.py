@@ -3,7 +3,7 @@ import pytest
 from app.api.deps import get_kb_refresh_service
 from app.core.config import get_settings
 from app.services.kb.refresh_service import KBRefreshService
-from tests.kb_fixtures import load_json, load_yaml
+from tests.kb_fixtures import load_json, load_text, load_yaml
 
 
 def _install_fixture_kb_service():
@@ -34,9 +34,9 @@ def _install_fixture_kb_service():
                 "https://example/stix-capec.json",
             ),
             fetch_d3fend=lambda: (
-                load_json("d3fend_mappings.json"),
+                load_text("d3fend_catalog.csv"),
                 "unknown",
-                "https://example/d3fend-mappings.json",
+                "https://example/D3FEND.csv",
             ),
         )
 

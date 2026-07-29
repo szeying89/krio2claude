@@ -1,6 +1,0 @@
-[
-  {"attack_id": "T1190", "d3fend_id": "D3-AI", "d3fend_name": "Application Isolation"},
-  {"attack_id": "T1190", "d3fend_id": "D3-NM", "d3fend_name": "Network Mapping"},
-  {"attack_id": "T1071", "d3fend_id": "D3-NTA", "d3fend_name": "Network Traffic Analysis"},
-  {"attack_id": "T8888-unknown", "d3fend_id": "D3-DNSAL", "d3fend_name": "DNS Allowlisting"}
-]

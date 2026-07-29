@@ -27,11 +27,11 @@ ENTERPRISE_INDEX_URL = (
 ATLAS_YAML_URL = "https://raw.githubusercontent.com/mitre-atlas/atlas-data/main/dist/ATLAS.yaml"
 CAPEC_STIX_URL = "https://raw.githubusercontent.com/mitre/cti/master/capec/2.1/stix-capec.json"
 # Best-effort default; d3fend.mitre.org is unreachable from this sandbox to
-# verify. Swap this URL (and d3fend.py's expected row shape, if needed) once
-# verified against the live export.
-D3FEND_MAPPINGS_URL = (
-    "https://d3fend.mitre.org/api/ontology/inference/attack-to-d3fend-mappings.json"
-)
+# verify the exact download path. The CSV shape itself (ID, D3FEND Tactic,
+# D3FEND Technique, Level 0, Level 1, Definition) is confirmed real — a user
+# supplied a live export in this shape — so d3fend.py's parser is verified
+# even though this URL isn't.
+D3FEND_CSV_URL = "https://d3fend.mitre.org/resources/D3FEND.csv"
 
 _TIMEOUT = 60.0
 
@@ -95,12 +95,13 @@ def fetch_capec(client: httpx.Client | None = None) -> tuple[dict, str, str]:
             client.close()
 
 
-def fetch_d3fend(client: httpx.Client | None = None) -> tuple[list[dict], str, str]:
+def fetch_d3fend(client: httpx.Client | None = None) -> tuple[str, str, str]:
     owns_client = client is None
     client = client or httpx.Client()
     try:
-        data = _get_json(client, D3FEND_MAPPINGS_URL)
-        return data, "unknown", D3FEND_MAPPINGS_URL
+        response = client.get(D3FEND_CSV_URL, timeout=_TIMEOUT)
+        response.raise_for_status()
+        return response.text, "unknown", D3FEND_CSV_URL
     finally:
         if owns_client:
             client.close()

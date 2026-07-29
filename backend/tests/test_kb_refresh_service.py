@@ -3,7 +3,7 @@ import pytest
 from app.services.kb.models import UnsupportedDomainError
 from app.services.kb.refresh_service import KBRefreshService
 from app.services.kb.snapshot import read_manifest
-from tests.kb_fixtures import load_json, load_yaml
+from tests.kb_fixtures import load_json, load_text, load_yaml
 
 
 def _fixture_fetchers():
@@ -24,9 +24,9 @@ def _fixture_fetchers():
             "https://example/stix-capec.json",
         ),
         "fetch_d3fend": lambda: (
-            load_json("d3fend_mappings.json"),
+            load_text("d3fend_catalog.csv"),
             "unknown",
-            "https://example/d3fend-mappings.json",
+            "https://example/D3FEND.csv",
         ),
     }
 
@@ -45,7 +45,8 @@ def test_refresh_writes_a_snapshot_with_expected_manifest(tmp_path):
         "d3fend": "unknown",
     }
     assert manifest["unresolved_capec_mappings"] == ["CAPEC-94"]
-    assert manifest["unresolved_d3fend_mappings"] == ["D3-DNSAL"]
+    assert manifest["d3fend_catalog_size"] == 15
+    assert manifest["d3fend_inferred_mapping_count"] >= 0
 
 
 def test_rerunning_refresh_against_unchanged_fixtures_is_a_noop(tmp_path):

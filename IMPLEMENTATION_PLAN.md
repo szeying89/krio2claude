@@ -208,13 +208,15 @@ Risk = Impact × Likelihood, banded, with a per-CSF-function rollup (GV/ID/PR/DE
 
 - [x] **Task 3: MITRE knowledge base fetch and immutable snapshot**
 
-  Fetch ATT&CK Enterprise (version-pinned via `index.json`), ATLAS STIX (from mitre-atlas/atlas-data releases), CAPEC, and D3FEND. Normalise to a common `TechniqueChunk` (id, matrix, tactics, name, description, detection, platforms, data sources, relationships) and write `./data/kb/<content_hash>/` with a manifest of source URLs, upstream versions, timestamps, and per-file digests. Explicitly no ICS or Mobile fetchers — the matrix enum permits only `enterprise` and `atlas`.
+  Fetch ATT&CK Enterprise (version-pinned via `index.json`), ATLAS (its own YAML schema, not STIX — verified against the live feed), CAPEC (STIX, ATT&CK-mapped via its own `external_references`), and D3FEND (its real technique-taxonomy CSV export — verified against a live pull, confirmed to carry **no** ATT&CK mapping column). Normalise to a common `TechniqueChunk` (id, matrix, tactics, name, description, detection, platforms, data sources, relationships) and write `./data/kb/<content_hash>/` with a manifest of source URLs, upstream versions, timestamps, and per-file digests. Explicitly no ICS or Mobile fetchers — the matrix enum permits only `enterprise` and `atlas`.
+
+  Since D3FEND's export has no ATT&CK bridge, `app/services/kb/heuristic_mapping.py` provides a shared, deterministic, rule-based lexical-overlap matcher (no LLM, no network) used to infer a D3FEND→ATT&CK bridge (and, in Task 4, a CRI→ATT&CK bridge) — every result is tagged `mapping_inferred`, carries its matched keywords as a rationale, and is stored under `relationships["d3fend_inferred"]`, kept distinct from `relationships["d3fend"]` (reserved for an authoritative mapping, should one ever become available). Verified against the real, live D3FEND CSV (271 techniques) and real ATT&CK Enterprise/ATLAS data (867 techniques): 65 D3FEND techniques produced at least one inferred link, 126 links total.
 
   *Owner: KB Snapshot Service.*
 
-  Tests: golden-file normalisation from committed fixtures, no network in tests; identical fixtures → identical snapshot hash; partial download publishes nothing; CAPEC→ATT&CK and D3FEND→ATT&CK relations resolve to known Enterprise/ATLAS IDs; a fixture containing ICS technique IDs is rejected at load.
+  Tests: golden-file normalisation from committed fixtures, no network in tests; identical fixtures → identical snapshot hash; partial download publishes nothing; CAPEC→ATT&CK relations resolve to known Enterprise/ATLAS IDs; a fixture containing ICS technique IDs is rejected at load; heuristic matcher determinism, threshold behavior, and stopword filtering.
 
-  Demo: Run the refresh job; the KB admin view shows the new snapshot with source versions, chunk counts for Enterprise and ATLAS, and its hash; re-running is a no-op.
+  Demo: Run the refresh job; the KB admin view shows the new snapshot with source versions, chunk counts for Enterprise and ATLAS, D3FEND catalog size, inferred-mapping count, and its hash; re-running is a no-op.
 
 - [ ] **Task 4: CRI Profile ingestion and impact tiering**
 

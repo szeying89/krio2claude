@@ -1,0 +1,16 @@
+ID,D3FEND Tactic,D3FEND Technique,D3FEND Technique Level 0,D3FEND Technique Level 1,Definition
+D3-OAM,Model,Operational Activity Mapping,,,
+D3-OM,Model,,Organization Mapping,,"Organization mapping identifies and models the people, roles, and groups with an organization and the relations between them."
+D3-NM,Model,Network Mapping,,,
+D3-PLM,Model,,Physical Link Mapping,,Physical link mapping identifies and models the link connectivity of the network devices within a physical network.
+D3-DPLM,Model,,,Direct Physical Link Mapping,Direct physical link mapping creates a physical link map by direct observation and recording of the physical network links.
+D3-APLM,Model,,,Active Physical Link Mapping,Active physical link mapping sends and receives network traffic as a means to map the physical layer.
+D3-NVA,Model,,Network Vulnerability Assessment,,"Network vulnerability assessment relates all the vulnerabilities of a network's components in the context of their configuration and interdependencies."
+D3-SCH,Harden,Source Code Hardening,,,
+D3-VTV,Harden,,Variable Type Validation,,Ensuring that a variable has the correct type.
+D3-AA,Harden,Agent Authentication,,,
+D3-MFA,Harden,,Multi-factor Authentication,,Requiring proof of two or more pieces of evidence in order to authenticate a user.
+D3-NTA,Detect,Network Traffic Analysis,,,
+D3-DNSTA,Detect,,DNS Traffic Analysis,,"Analysis of domain name metadata, including name and DNS records, to determine whether the domain is likely to resolve to an undesirable host."
+D3-AMED,Isolate,Access Mediation,,,
+D3-NAM,Isolate,,Network Access Mediation,,Network access mediation is the control method for authorizing access to a system by a user communicating through a network.

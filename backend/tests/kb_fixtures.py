@@ -12,3 +12,7 @@ def load_json(name: str):
 
 def load_yaml(name: str):
     return yaml.safe_load((FIXTURES_DIR / name).read_text())
+
+
+def load_text(name: str) -> str:
+    return (FIXTURES_DIR / name).read_text()
