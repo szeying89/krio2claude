@@ -6,5 +6,8 @@
         "repo": "ayghri/i-have-adhd"
       }
     }
+  },
+  "enabledPlugins": {
+    "i-have-adhd@i-have-adhd": true
   }
 }
