@@ -1,0 +1,50 @@
+import argparse
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.api.runs import router as runs_router
+from app.core.config import assert_bind_allowed, get_settings
+from app.db.base import get_database
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+    settings.runs_dir.mkdir(parents=True, exist_ok=True)
+    db = get_database()
+    await db.create_all()
+    yield
+    await db.dispose()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Ground-Truth Threat Modelling Platform", lifespan=lifespan)
+    app.include_router(runs_router)
+    return app
+
+
+app = create_app()
+
+
+def run() -> None:
+    import uvicorn
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--port", type=int, default=None)
+    parser.add_argument("--allow-non-loopback", action="store_true")
+    args = parser.parse_args()
+
+    settings = get_settings()
+    host = args.host or settings.host
+    allow_non_loopback = args.allow_non_loopback or settings.allow_non_loopback
+
+    assert_bind_allowed(host, allow_non_loopback)
+
+    uvicorn.run(app, host=host, port=args.port or settings.port)
+
+
+if __name__ == "__main__":
+    run()

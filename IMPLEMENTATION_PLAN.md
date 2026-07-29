@@ -178,7 +178,7 @@ Risk = Impact × Likelihood, banded, with a per-CSF-function rollup (GV/ID/PR/DE
 
 ## Task Breakdown
 
-- [ ] **Task 1: Repository skeleton and run lifecycle**
+- [x] **Task 1: Repository skeleton and run lifecycle**
 
   Monorepo: `backend/` (FastAPI, Python 3.12, SQLAlchemy 2.x, Alembic, pytest), `frontend/` (Vite + React + TS, React Query, Vitest). SQLite at `app.db`, artifacts at `./data/runs/<run_id>/`, pydantic-settings config, Run state machine (`queued → running → needs_input → complete → failed`) with per-stage records and a `parent_run_id` field reserved for revisions. SSE progress endpoint, loopback-only default, CI on lint/typecheck/test.
 
@@ -188,7 +188,7 @@ Risk = Impact × Likelihood, banded, with a per-CSF-function rollup (GV/ID/PR/DE
 
   Demo: Create a run, watch empty stages progress with live status, inspect the run manifest.
 
-- [ ] **Task 1b: Orchestrator, Agent, and Tool contracts** *(new)*
+- [x] **Task 1b: Orchestrator, Agent, and Tool contracts** *(new)*
 
   Define the `AgentInvocation(agent_name, input_artifacts, config, pinned_snapshots) → (output_artifacts, trajectory_record, status)` contract; a declarative Agent registry (name, scoped toolset, input/output artifact types); the dependency/invalidation graph engine that computes the minimal downstream re-run set from any upstream artifact change; the trajectory cache keyed on `hash(inputs + pinned snapshots + model/tool config)`; and the per-agent step/tool-call budget that fails loudly. This absorbs and generalizes the orchestration content formerly deferred to the last task of the plan — it exists before any agent is built, not after.
 
