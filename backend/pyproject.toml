@@ -21,6 +21,7 @@ dependencies = [
     "scikit-learn>=1.5",
     "numpy>=2.0",
     "networkx>=3.3",
+    "jsonschema>=4.23",
 ]
 
 [project.optional-dependencies]
