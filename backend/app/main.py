@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.kb import router as kb_router
 from app.api.projects import router as projects_router
 from app.api.runs import router as runs_router
 from app.core.config import assert_bind_allowed, get_settings
@@ -15,6 +16,7 @@ async def lifespan(app: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.runs_dir.mkdir(parents=True, exist_ok=True)
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
+    settings.kb_dir.mkdir(parents=True, exist_ok=True)
     db = get_database()
     await db.create_all()
     yield
@@ -25,6 +27,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Ground-Truth Threat Modelling Platform", lifespan=lifespan)
     app.include_router(runs_router)
     app.include_router(projects_router)
+    app.include_router(kb_router)
     return app
 
 

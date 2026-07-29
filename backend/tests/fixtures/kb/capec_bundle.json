@@ -1,0 +1,36 @@
+{
+  "type": "bundle",
+  "id": "bundle--test-capec",
+  "objects": [
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--capec-66",
+      "name": "SQL Injection",
+      "description": "The adversary exploits a weakness in input validation on the target's SQL calls.",
+      "external_references": [
+        {"source_name": "capec", "external_id": "CAPEC-66", "url": "https://capec.mitre.org/data/definitions/66.html"},
+        {"source_name": "ATTACK", "external_id": "T1190", "url": "https://attack.mitre.org/techniques/T1190/"}
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--capec-94",
+      "name": "Adversary in the Middle (AiTM)",
+      "description": "An adversary intercepts communications between two parties.",
+      "external_references": [
+        {"source_name": "capec", "external_id": "CAPEC-94", "url": "https://capec.mitre.org/data/definitions/94.html"},
+        {"source_name": "ATTACK", "external_id": "T1071", "url": "https://attack.mitre.org/techniques/T1071/"},
+        {"source_name": "ATTACK", "external_id": "T9999-unknown", "url": "https://attack.mitre.org/techniques/T9999/"}
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--capec-no-mapping",
+      "name": "Pattern with no ATT&CK mapping at all",
+      "description": "Some CAPEC patterns have no corresponding ATT&CK technique.",
+      "external_references": [
+        {"source_name": "capec", "external_id": "CAPEC-1", "url": "https://capec.mitre.org/data/definitions/1.html"}
+      ]
+    }
+  ]
+}

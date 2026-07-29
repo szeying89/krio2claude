@@ -206,7 +206,7 @@ Risk = Impact × Likelihood, banded, with a per-CSF-function rollup (GV/ID/PR/DE
 
   Demo: Upload a design doc with an embedded diagram; see extracted prose, isolated diagram source, and saved context side by side.
 
-- [ ] **Task 3: MITRE knowledge base fetch and immutable snapshot**
+- [x] **Task 3: MITRE knowledge base fetch and immutable snapshot**
 
   Fetch ATT&CK Enterprise (version-pinned via `index.json`), ATLAS STIX (from mitre-atlas/atlas-data releases), CAPEC, and D3FEND. Normalise to a common `TechniqueChunk` (id, matrix, tactics, name, description, detection, platforms, data sources, relationships) and write `./data/kb/<content_hash>/` with a manifest of source URLs, upstream versions, timestamps, and per-file digests. Explicitly no ICS or Mobile fetchers — the matrix enum permits only `enterprise` and `atlas`.
 
