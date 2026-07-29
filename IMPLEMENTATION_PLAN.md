@@ -244,15 +244,15 @@ Risk = Impact × Likelihood, banded, with a per-CSF-function rollup (GV/ID/PR/DE
 
   Demo: Retrieval playground — query "model inversion against a hosted inference endpoint", see fused results with matrix badges, per-retriever ranks, and citable snippets; filter to `matrix=atlas` and confirm only ATLAS techniques remain.
 
-- [ ] **Task 6: Deterministic Mermaid parser**
+- [x] **Task 6: Deterministic Mermaid parser**
 
-  Parse flowchart/graph (tolerating C4Context) into typed nodes, edges, subgraphs, and edge labels; subgraphs become candidate trust zones, node shapes hint element types. Parse failures give line/column diagnostics with no silent fallback.
+  Hand-written parser (not a masking/regex-only approach — a sequential node/connector scanner that structurally consumes bracket-delimited shapes and quoted labels as it goes) for the real-world flowchart/graph grammar: all 5 directions, every standard node shape (rectangle, rounded, stadium, subroutine, cylinder, circle, double circle, rhombus, hexagon, asymmetric, parallelogram/trapezoid and their mirrored variants), chained edges on one line, inline (`-- text -->`) and pipe (`-->|text|`) edge labels, nested subgraphs (candidate trust zones), quoted/escaped labels (including HTML-entity escapes), and self-loops. A best-effort C4Context/C4Container/C4Component parser reuses the same Node/Edge/Subgraph model (element macros → nodes, boundary blocks → subgraphs, `Rel`-family macros → edges) so downstream code never needs to special-case diagram type. A `render_flowchart` normalizer regenerates canonical Mermaid syntax from either parser's output. Explicitly out of scope, documented and rejected loudly rather than mishandled: ampersand fan-out/fan-in (`A --> B & C`) and o/x circle-or-cross arrow endpoints.
 
   *Owner: Model-Building Agent (Q1) — deterministic tool, Mermaid-authoritative precedence enforced here, not by agent judgment.*
 
-  Tests: fixtures for all directions, nested subgraphs, quoted/escaped labels, every arrow type, self-loops, malformed input diagnostics.
+  Tests: all 5 directions; all 14 node shapes; all 7 arrow line-styles plus bidirectional variants, inline-label and pipe-label forms; chained edges; nested subgraphs with and without explicit titles; quoted labels with escaped quotes, embedded commas, and embedded brackets; HTML-entity label escapes; self-loops; malformed-input diagnostics (missing header, unterminated shape, unterminated subgraph, dangling connector, unknown direction) each asserted with a line number; style/classDef/class/click/linkStyle directives tolerated as topology-irrelevant; C4 element/boundary/Rel macros, nested boundaries, and C4-specific malformed input; round-trip (parse → render → re-parse preserves topology).
 
-  Demo: Paste a diagram, see the parsed node/edge/subgraph table and a normalised re-render, with a clear error panel for bad syntax.
+  Demo: `POST /mermaid/parse` — paste a diagram, get back the parsed node/edge/subgraph table, a normalised re-render, and (for bad syntax) a structured error panel with line/column. Verified live: a nested-subgraph diagram with mixed shapes/labels parses correctly and re-renders to valid, re-parseable Mermaid; `A --> B & C` returns a clear "not supported" error at the correct line.
 
 - [ ] **Task 7: Agent/LLM gateway with determinism controls and trajectory cache**
 

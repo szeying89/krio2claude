@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from app.api.cri import router as cri_router
 from app.api.cri import snapshots_router as cri_snapshots_router
 from app.api.kb import router as kb_router
+from app.api.mermaid import router as mermaid_router
 from app.api.projects import router as projects_router
 from app.api.retrieval import router as retrieval_router
 from app.api.runs import router as runs_router
@@ -35,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(cri_router)
     app.include_router(cri_snapshots_router)
     app.include_router(retrieval_router)
+    app.include_router(mermaid_router)
     return app
 
 
