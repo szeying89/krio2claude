@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     def projects_dir(self) -> Path:
         return self.data_dir / "projects"
 
+    @property
+    def cri_dir(self) -> Path:
+        return self.data_dir / "cri"
+
 
 def get_settings() -> Settings:
     return Settings()

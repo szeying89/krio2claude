@@ -218,15 +218,19 @@ Risk = Impact × Likelihood, banded, with a per-CSF-function rollup (GV/ID/PR/DE
 
   Demo: Run the refresh job; the KB admin view shows the new snapshot with source versions, chunk counts for Enterprise and ATLAS, D3FEND catalog size, inferred-mapping count, and its hash; re-running is a no-op.
 
-- [ ] **Task 4: CRI Profile ingestion and impact tiering**
+- [x] **Task 4: CRI Profile ingestion and impact tiering**
 
-  Parse user-uploaded CRI Profile v2.2 workbook, Mappings Catalog, and Profile→ATT&CK mapping into a versioned `ControlObjectiveCatalog` (statement ID, CSF 2.0 function/category, text, applicable tiers, regulatory references, mapped technique IDs), stored as its own content-hashed snapshot. Implement the 9-question Impact Questionnaire as a Model-Building Agent tool, computing Impact Tier 1–4 and deriving the in-scope statement subset, with each answer and its justification persisted. Handle absent files gracefully: the pipeline runs without CRI, with the risk assessment degraded and clearly labelled.
+  Parse a real user-uploaded CRI Profile v2.2 workbook — verified column-by-column against a live copy (six sheets: Structure, Assessment, Catalog of Mapped Documents, NIST CSF v2 Mapping, EEE Packages, Subject Tag List) — into a versioned `ControlObjectiveCatalog` (statement ID, CSF 2.0 function/category/subcategory, text, applicable tiers, regulatory references resolved against the document catalog, subject tags, EEE evidence-package references), stored as its own content-hashed snapshot, separate from the MITRE KB namespace. The workbook carries **no** Profile→ATT&CK mapping at all (confirmed absent), so the CRI→ATT&CK bridge reuses Task 3's shared heuristic matcher (`app/services/kb/heuristic_mapping.py`) against a pinned KB snapshot — every result is `mapping_inferred`, and re-ingesting an unchanged catalog against a newly-available KB snapshot refreshes just the mapping metadata in place rather than treating the catalog as changed.
 
-  *Owner: CRI Catalog Service (parsing/snapshot) + Model-Building Agent (tiering questionnaire tool).*
+  The Impact Tiering Questionnaire turned out to be a real **cascading off-ramp decision tree** (verified against the live questionnaire), not a scored rubric: 9 questions across Tier 1 (2 questions), Tier 2 (4), and Tier 3 (3), where the first "Yes" immediately assigns that tier and falling through every question lands at Tier 4 (no questions of its own). Every answer is persisted with its justification and which question (or the Tier-4 fallthrough) triggered the result.
 
-  Tests: parser handles the published workbook layout and rejects malformed/unexpected sheets with actionable errors; tier computation matches a fixture table for all nine answer combinations tested; in-scope statement counts differ correctly per tier; technique→statement lookups resolve; missing-CRI mode disables CRI features without breaking the run.
+  *Owner: CRI Catalog Service (parsing/snapshot) + Model-Building Agent (tiering questionnaire tool, once agents exist).*
 
-  Demo: Upload the CRI workbook, answer nine questions, see "Impact Tier 3 — 214 of 318 diagnostic statements in scope" with the statement list browsable by CSF function and a per-answer justification trail.
+  Tests: parser handles the real published workbook layout (header-anchor detection, not fixed row numbers) and rejects malformed/unexpected sheets with actionable errors; all 9 tiering-decision-tree branches plus the Tier-4 fallthrough tested against expected outcomes; in-scope statement counts differ correctly per tier; heuristic CRI→ATT&CK mapping tested for determinism and correct `mapping_inferred` tagging; missing-CRI mode (404, not a crash) verified.
+
+  Verified end-to-end against the real live CRI Profile v2.2 workbook via the running API: exactly 318/311/282/208 statements per tier (matching the workbook's own stated counts), a genuine real-world data-quality gap caught (5 regulatory short-codes in the Structure sheet that don't match the Catalog of Mapped Documents sheet's naming, e.g. "JFSA" vs "JFSA 2024"), and — once pinned against a live-fetched KB snapshot — 389 inferred CRI→ATT&CK links across 87 statements.
+
+  Demo: Upload the real CRI workbook, submit the 9 tiering answers, get "Tier 2, triggered by question 2.3" with the full justification trail, and browse "311 of 318 diagnostic statements in scope" filterable by tier via the API.
 
 - [ ] **Task 5: Hybrid retrieval service**
 

@@ -93,3 +93,23 @@ class UpdateProjectRequest(BaseModel):
     compliance_regimes: list[str] | None = None
     scope_statements: list[str] | None = None
     declared_controls: list[str] | None = None
+
+
+class ImpactTieringAnswerIn(BaseModel):
+    question_id: str
+    answer: bool
+    justification: str = ""
+
+
+class ImpactTieringRequest(BaseModel):
+    answers: list[ImpactTieringAnswerIn]
+
+
+class ImpactTieringOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    project_id: str
+    tier: int
+    triggering_question_id: str | None
+    answers: list[dict[str, Any]]
+    computed_at: datetime

@@ -46,6 +46,8 @@ class Project(Base):
     scope_statements: Mapped[list[str]] = mapped_column(JSON, default=list)
     declared_controls: Mapped[list[str]] = mapped_column(JSON, default=list)
 
+    cri_snapshot_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
@@ -53,6 +55,9 @@ class Project(Base):
 
     documents: Mapped[list["DesignDocument"]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
+    )
+    impact_tiering: Mapped["ImpactTiering | None"] = relationship(
+        back_populates="project", cascade="all, delete-orphan", uselist=False
     )
 
 
@@ -74,3 +79,15 @@ class DesignDocument(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
     project: Mapped[Project] = relationship(back_populates="documents")
+
+
+class ImpactTiering(Base):
+    __tablename__ = "impact_tiering"
+
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), primary_key=True)
+    tier: Mapped[int] = mapped_column(Integer, nullable=False)
+    triggering_question_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    answers: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    project: Mapped[Project] = relationship(back_populates="impact_tiering")
