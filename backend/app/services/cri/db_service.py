@@ -2,7 +2,6 @@ import io
 import json
 from dataclasses import asdict
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
@@ -13,7 +12,7 @@ from app.models.project import ImpactTiering, Project
 from app.services.cri.ingestion_service import CRIIngestionService
 from app.services.cri.snapshot import read_manifest as read_cri_manifest
 from app.services.cri.tiering import QuestionAnswer, compute_tier
-from app.services.kb.snapshot import read_manifest as read_kb_manifest
+from app.services.kb.snapshot import latest_snapshot_dir as _latest_kb_snapshot_dir
 
 
 class ProjectNotFoundError(Exception):
@@ -22,15 +21,6 @@ class ProjectNotFoundError(Exception):
 
 class CRIProfileNotUploadedError(Exception):
     """Missing-CRI mode: no CRI workbook has been uploaded for this project."""
-
-
-def _latest_kb_snapshot_dir(kb_dir: Path) -> Path | None:
-    if not kb_dir.exists():
-        return None
-    candidates = [d for d in kb_dir.iterdir() if d.is_dir() and not d.name.startswith(".tmp-")]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda d: read_kb_manifest(d)["fetched_at"])
 
 
 class ProjectCRIService:

@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,6 +47,11 @@ class Project(Base):
     declared_controls: Mapped[list[str]] = mapped_column(JSON, default=list)
 
     cri_snapshot_hash: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Task 11: Enterprise is always active; ATLAS is off unless a user has
+    # explicitly confirmed it — via declaration or via confirming the
+    # rule-based detector's proposal. Never flipped by the detector itself.
+    atlas_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(

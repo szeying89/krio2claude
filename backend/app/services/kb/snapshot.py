@@ -150,6 +150,19 @@ def read_manifest(snapshot_dir: Path) -> dict[str, Any]:
     return json.loads((snapshot_dir / "manifest.json").read_text())
 
 
+def latest_snapshot_dir(kb_dir: Path) -> Path | None:
+    """The most recently fetched KB snapshot on disk, or None if none
+    exists yet — shared by every consumer that needs "whatever the current
+    KB is" (CRI ingestion's pinned mapping, the Task 11 CAPEC bridge)
+    rather than each keeping its own copy of this lookup."""
+    if not kb_dir.exists():
+        return None
+    candidates = [d for d in kb_dir.iterdir() if d.is_dir() and not d.name.startswith(".tmp-")]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda d: read_manifest(d)["fetched_at"])
+
+
 def read_techniques(snapshot_dir: Path) -> list[TechniqueChunk]:
     data = json.loads((snapshot_dir / "techniques.json").read_text())
     return [TechniqueChunk.from_dict(d) for d in data]

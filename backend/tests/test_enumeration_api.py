@@ -2,9 +2,56 @@ import json
 
 import pytest
 
+from app.api import enumeration as enumeration_module
 from app.api.deps import get_llm_gateway
+from app.core.config import get_settings
+from app.services.kb.models import TechniqueChunk
+from app.services.kb.snapshot import write_snapshot as write_kb_snapshot
 from app.services.llm.fake_provider import FakeProvider
 from app.services.llm.gateway import LLMGateway
+
+
+@pytest.fixture(autouse=True)
+def _clear_technique_index_cache():
+    enumeration_module._technique_indexes.clear()
+    yield
+    enumeration_module._technique_indexes.clear()
+
+
+def _write_capec_mapped_kb_snapshot(kb_dir):
+    chunks = [
+        TechniqueChunk(
+            id="T1499",
+            matrix="enterprise",
+            name="Endpoint Denial of Service",
+            tactics=("impact",),
+            description="Adversaries may perform denial of service attacks to degrade or "
+            "block availability by flooding a target to exhaust resources.",
+            detection="",
+            platforms=("Linux",),
+            data_sources=(),
+            relationships={"capec": ("CAPEC-125",)},
+        ),
+        TechniqueChunk(
+            id="AML.T0015",
+            matrix="atlas",
+            name="ML Model Denial of Service",
+            tactics=("impact",),
+            description="Adversaries may flood an ML inference endpoint to exhaust compute "
+            "and deny service.",
+            detection="",
+            platforms=(),
+            data_sources=(),
+            relationships={"capec": ("CAPEC-125",)},
+        ),
+    ]
+    return write_kb_snapshot(
+        kb_dir,
+        chunks,
+        versions={"attack_enterprise": "19.1", "atlas": "5.0"},
+        source_urls={},
+        fetched_at="2026-01-01T00:00:00Z",
+    )
 
 VALID_PROJECT = {
     "name": "Payments Platform",
@@ -157,3 +204,158 @@ async def test_linddun_present_when_pii_asset_exists(client, tmp_path):
         assert len(processor_row["linddun_categories"]) == 7
     finally:
         app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_atlas_proposal_fires_on_ml_platform_indicators(client, tmp_path):
+    from app.main import app
+
+    ml_doc = """\
+# ML Platform
+
+The training pipeline retrains the fraud model nightly. Requests reach
+the model serving inference endpoint over HTTPS.
+
+```mermaid
+flowchart LR
+    Client((Client)) -->|HTTPS| Endpoint[Model Inference Endpoint]
+    Endpoint --> Store[(Feature Store)]
+```
+"""
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("ml.md", ml_doc.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        proposal_resp = await client.get(f"/projects/{project_id}/atlas-proposal")
+        assert proposal_resp.status_code == 200
+        body = proposal_resp.json()
+        assert body["proposed"] is True
+        assert body["atlas_enabled"] is False
+        assert any(f["category"] == "inference_endpoint" for f in body["findings"])
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_atlas_proposal_silent_on_pure_it_design(client, tmp_path):
+    from app.main import app
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        proposal_resp = await client.get(f"/projects/{project_id}/atlas-proposal")
+        assert proposal_resp.json()["proposed"] is False
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_unconfirmed_atlas_proposal_has_no_effect_on_bridge(client, tmp_path):
+    from app.main import app
+
+    kb_dir = get_settings().kb_dir
+    _write_capec_mapped_kb_snapshot(kb_dir)
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        # never confirmed — atlas_enabled stays false, so no ATLAS technique
+        # may appear anywhere in the bridged output
+        threats_resp = await client.get(f"/projects/{project_id}/system-model/threats")
+        body = threats_resp.json()
+        assert body["atlas_enabled"] is False
+        all_matrices = {
+            t["matrix"] for c in body["candidates"] for t in c["bridged_techniques"]
+        }
+        assert "atlas" not in all_matrices
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_confirming_atlas_expands_the_bridge_to_include_atlas_techniques(client, tmp_path):
+    from app.main import app
+
+    kb_dir = get_settings().kb_dir
+    _write_capec_mapped_kb_snapshot(kb_dir)
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        confirm_resp = await client.post(
+            f"/projects/{project_id}/atlas-confirmation", json={"enabled": True}
+        )
+        assert confirm_resp.status_code == 200
+        assert confirm_resp.json()["atlas_enabled"] is True
+
+        threats_resp = await client.get(f"/projects/{project_id}/system-model/threats")
+        body = threats_resp.json()
+        assert body["atlas_enabled"] is True
+        all_technique_ids = {
+            t["technique_id"] for c in body["candidates"] for t in c["bridged_techniques"]
+        }
+        assert "AML.T0015" in all_technique_ids
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_capec_bridge_attaches_real_capec_ids_to_stride_candidates(client, tmp_path):
+    from app.main import app
+
+    kb_dir = get_settings().kb_dir
+    _write_capec_mapped_kb_snapshot(kb_dir)
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        threats_resp = await client.get(f"/projects/{project_id}/system-model/threats")
+        body = threats_resp.json()
+        dos_candidates = [c for c in body["candidates"] if c["category"] == "denial_of_service"]
+        assert dos_candidates
+        bridged = [t for c in dos_candidates for t in c["bridged_techniques"]]
+        assert any(t["technique_id"] == "T1499" and t["capec_ids"] == ["CAPEC-125"] for t in bridged)
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_atlas_confirmation_missing_project_404(client):
+    resp = await client.post(
+        "/projects/does-not-exist/atlas-confirmation", json={"enabled": True}
+    )
+    assert resp.status_code == 404

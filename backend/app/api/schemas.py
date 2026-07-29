@@ -70,6 +70,7 @@ class ProjectOut(BaseModel):
     compliance_regimes: list[str]
     scope_statements: list[str]
     declared_controls: list[str]
+    atlas_enabled: bool
     created_at: datetime
     updated_at: datetime
     documents: list[DesignDocumentOut]
