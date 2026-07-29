@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.api.assurance import router as assurance_router
 from app.api.cri import router as cri_router
 from app.api.cri import snapshots_router as cri_snapshots_router
 from app.api.enumeration import router as enumeration_router
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(risk_router)
     app.include_router(intel_router)
     app.include_router(revisions_router)
+    app.include_router(assurance_router)
     return app
 
 
