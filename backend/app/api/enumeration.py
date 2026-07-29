@@ -4,12 +4,20 @@ from pydantic import BaseModel
 from app.api.deps import get_project_service, get_system_model_service
 from app.core.config import get_settings
 from app.services.enumeration.atlas_detector import detect_atlas_indicators
+from app.services.enumeration.attack_graph import (
+    AttackGraph,
+    AttackGraphBudgetExceededError,
+    AttackGraphNode,
+    Precondition,
+    build_attack_graph,
+)
 from app.services.enumeration.bridge import (
     BridgedTechnique,
     TechniqueIndex,
     bridge_candidates,
     build_technique_index,
 )
+from app.services.enumeration.engine import enumerate_threats
 from app.services.enumeration.matrix import EnumerationResult, build_enumeration_result
 from app.services.enumeration.ruleset import load_ruleset
 from app.services.kb.snapshot import latest_snapshot_dir, read_techniques
@@ -226,3 +234,129 @@ async def confirm_atlas(
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="project not found") from exc
     return AtlasConfirmationOut(atlas_enabled=project.atlas_enabled)
+
+
+class PreconditionOut(BaseModel):
+    kind: str
+    satisfied: bool
+    detail: str
+
+
+class AttackGraphNodeOut(BaseModel):
+    entity_id: str
+    attacker_position: str
+    privilege_level: str
+
+
+class AttackGraphEdgeOut(BaseModel):
+    source: AttackGraphNodeOut
+    target: AttackGraphNodeOut
+    dataflow_id: str
+    technique_id: str
+    technique_name: str
+    matrix: str
+    capec_ids: list[str]
+    candidate_threat_id: str
+    preconditions: list[PreconditionOut]
+    citation: str
+
+
+class AttackGraphOut(BaseModel):
+    nodes: list[AttackGraphNodeOut]
+    edges: list[AttackGraphEdgeOut]
+    entry_points: list[str]
+    crown_jewels: list[str]
+
+
+def _node_out(node: AttackGraphNode) -> AttackGraphNodeOut:
+    return AttackGraphNodeOut(
+        entity_id=node.entity_id,
+        attacker_position=node.attacker_position,
+        privilege_level=node.privilege_level.name,
+    )
+
+
+def _preconditions_out(preconditions: tuple[Precondition, ...]) -> list[PreconditionOut]:
+    return [
+        PreconditionOut(kind=p.kind, satisfied=p.satisfied, detail=p.detail) for p in preconditions
+    ]
+
+
+def _attack_graph_out(result: AttackGraph) -> AttackGraphOut:
+    edges: list[AttackGraphEdgeOut] = []
+    for source, target, edge_data in result.graph.edges(data=True):
+        data = edge_data["data"]
+        edges.append(
+            AttackGraphEdgeOut(
+                source=_node_out(source),
+                target=_node_out(target),
+                dataflow_id=data.dataflow_id,
+                technique_id=data.technique_id,
+                technique_name=data.technique_name,
+                matrix=data.matrix,
+                capec_ids=list(data.capec_ids),
+                candidate_threat_id=data.candidate_threat_id,
+                preconditions=_preconditions_out(data.preconditions),
+                citation=data.citation,
+            )
+        )
+    return AttackGraphOut(
+        nodes=[_node_out(n) for n in result.graph.nodes],
+        edges=edges,
+        entry_points=list(result.entry_points),
+        crown_jewels=list(result.crown_jewels),
+    )
+
+
+def _build_graph_for_model(model: SystemModel, atlas_enabled: bool) -> AttackGraph:
+    index = _get_technique_index()
+    allowed_matrices = ("enterprise", "atlas") if atlas_enabled else ("enterprise",)
+    dataflow_candidates = [
+        c
+        for c in enumerate_threats(model, _RULESET)
+        if c.element_kind == "dataflow" and c.framework == "stride"
+    ]
+    return build_attack_graph(model, dataflow_candidates, index, allowed_matrices=allowed_matrices)
+
+
+@router.get("/{project_id}/system-model/attack-graph", response_model=AttackGraphOut)
+async def get_latest_attack_graph(
+    project_id: str,
+    project_service: ProjectService = Depends(get_project_service),
+    model_service: ProjectSystemModelService = Depends(get_system_model_service),
+) -> AttackGraphOut:
+    try:
+        project = await project_service.get_project(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="project not found") from exc
+    try:
+        model = await model_service.get_latest(project_id)
+    except SystemModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="no system model has been frozen yet") from exc
+    try:
+        return _attack_graph_out(_build_graph_for_model(model, project.atlas_enabled))
+    except AttackGraphBudgetExceededError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/{project_id}/system-model/versions/{version}/attack-graph", response_model=AttackGraphOut
+)
+async def get_attack_graph_for_version(
+    project_id: str,
+    version: int,
+    project_service: ProjectService = Depends(get_project_service),
+    model_service: ProjectSystemModelService = Depends(get_system_model_service),
+) -> AttackGraphOut:
+    try:
+        project = await project_service.get_project(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="project not found") from exc
+    try:
+        model = await model_service.get_version(project_id, version)
+    except SystemModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="system model version not found") from exc
+    try:
+        return _attack_graph_out(_build_graph_for_model(model, project.atlas_enabled))
+    except AttackGraphBudgetExceededError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

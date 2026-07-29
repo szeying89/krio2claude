@@ -62,6 +62,7 @@ class TechniqueIndex:
     capec_by_technique: dict[str, tuple[str, ...]]
     name_by_technique: dict[str, str]
     matrix_by_technique: dict[str, str]
+    description_by_technique: dict[str, str]
 
 
 def build_technique_index(chunks: list[TechniqueChunk]) -> TechniqueIndex:
@@ -70,6 +71,7 @@ def build_technique_index(chunks: list[TechniqueChunk]) -> TechniqueIndex:
         capec_by_technique={c.id: c.relationships.get("capec", ()) for c in chunks},
         name_by_technique={c.id: c.name for c in chunks},
         matrix_by_technique={c.id: c.matrix for c in chunks},
+        description_by_technique={c.id: c.description for c in chunks},
     )
 
 

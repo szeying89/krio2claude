@@ -359,3 +359,103 @@ async def test_atlas_confirmation_missing_project_404(client):
         "/projects/does-not-exist/atlas-confirmation", json={"enabled": True}
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_attack_graph_before_any_freeze_is_404(client):
+    resp = await client.post("/projects", json=VALID_PROJECT)
+    project_id = resp.json()["id"]
+    result = await client.get(f"/projects/{project_id}/system-model/attack-graph")
+    assert result.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_attack_graph_excludes_out_of_scope_and_reports_entry_points(client, tmp_path):
+    from app.main import app
+
+    kb_dir = get_settings().kb_dir
+    _write_capec_mapped_kb_snapshot(kb_dir)
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        graph_resp = await client.get(f"/projects/{project_id}/system-model/attack-graph")
+        assert graph_resp.status_code == 200
+        body = graph_resp.json()
+
+        node_ids = {n["entity_id"] for n in body["nodes"]}
+        historian_row = None
+        threats = (await client.get(f"/projects/{project_id}/system-model/threats")).json()
+        historian_row = next(r for r in threats["matrix"] if "Historian" in r["element_name"])
+        assert historian_row["element_id"] not in node_ids
+
+        assert len(body["entry_points"]) == 1
+        assert body["entry_points"][0] in node_ids
+
+        edge = next(
+            (e for e in body["edges"] if e["technique_id"] == "T1499"),
+            None,
+        )
+        assert edge is not None
+        assert edge["citation"] != ""
+        assert {p["kind"] for p in edge["preconditions"]} == {
+            "reachability", "exposure", "authentication", "required_privilege", "boundary_crossing"
+        }
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_attack_graph_excludes_atlas_technique_before_confirmation(client, tmp_path):
+    from app.main import app
+
+    kb_dir = get_settings().kb_dir
+    _write_capec_mapped_kb_snapshot(kb_dir)
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        graph_resp = await client.get(f"/projects/{project_id}/system-model/attack-graph")
+        matrices = {e["matrix"] for e in graph_resp.json()["edges"]}
+        assert "atlas" not in matrices
+
+        await client.post(f"/projects/{project_id}/atlas-confirmation", json={"enabled": True})
+        graph_resp2 = await client.get(f"/projects/{project_id}/system-model/attack-graph")
+        matrices2 = {e["matrix"] for e in graph_resp2.json()["edges"]}
+        assert "atlas" in matrices2
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_attack_graph_for_missing_version_404(client, tmp_path):
+    from app.main import app
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        resp = await client.get(f"/projects/{project_id}/system-model/versions/99/attack-graph")
+        assert resp.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
