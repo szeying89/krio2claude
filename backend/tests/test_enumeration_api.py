@@ -517,3 +517,71 @@ async def test_attack_paths_for_missing_version_404(client, tmp_path):
         assert resp.status_code == 404
     finally:
         app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_adjudicated_threats_before_any_freeze_is_404(client):
+    resp = await client.post("/projects", json=VALID_PROJECT)
+    project_id = resp.json()["id"]
+    result = await client.get(f"/projects/{project_id}/system-model/adjudicated-threats")
+    assert result.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_adjudicated_threats_covers_every_candidate_exactly_once(client, tmp_path):
+    from app.main import app
+
+    kb_dir = get_settings().kb_dir
+    _write_capec_mapped_kb_snapshot(kb_dir)
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        resp = await client.get(f"/projects/{project_id}/system-model/adjudicated-threats")
+        assert resp.status_code == 200
+        body = resp.json()
+
+        adjudicated_ids = {a["candidate_threat_id"] for a in body["adjudicated_threats"]}
+        rejected_ids = {r["candidate_threat_id"] for r in body["rejection_log"]}
+        assert not (adjudicated_ids & rejected_ids)
+        assert len(adjudicated_ids) + len(rejected_ids) == body["candidate_count"]
+
+        # every not_applicable record carries a parseable invalidation condition
+        for a in body["adjudicated_threats"]:
+            if a["verdict"] == "not_applicable":
+                assert a["invalidation_condition"] is not None
+                assert a["invalidation_condition"]["kind"]
+                assert a["invalidation_condition"]["entity_id"]
+            else:
+                assert a["invalidation_condition"] is None
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+
+
+@pytest.mark.asyncio
+async def test_adjudicated_threats_for_missing_version_404(client, tmp_path):
+    from app.main import app
+
+    app.dependency_overrides[get_llm_gateway] = _override_fake_gateway(tmp_path)
+    try:
+        resp = await client.post("/projects", json=VALID_PROJECT)
+        project_id = resp.json()["id"]
+        await client.post(
+            f"/projects/{project_id}/documents",
+            files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+        )
+        await client.post(f"/projects/{project_id}/system-model")
+
+        resp = await client.get(
+            f"/projects/{project_id}/system-model/versions/99/adjudicated-threats"
+        )
+        assert resp.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)

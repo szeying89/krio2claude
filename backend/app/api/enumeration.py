@@ -3,6 +3,17 @@ from pydantic import BaseModel
 
 from app.api.deps import get_project_service, get_system_model_service
 from app.core.config import get_settings
+from app.orchestrator.orchestrator import Orchestrator, ValidationError
+from app.orchestrator.registry import AgentRegistry
+from app.services.enumeration.adjudication import Adjudication
+from app.services.enumeration.agent import (
+    AGENT_NAME as ENUMERATION_AGENT_NAME,
+)
+from app.services.enumeration.agent import (
+    RejectionLogEntry,
+    build_enumeration_agent,
+    validate_enumeration_grounding,
+)
 from app.services.enumeration.atlas_detector import detect_atlas_indicators
 from app.services.enumeration.attack_graph import (
     AttackGraph,
@@ -468,3 +479,131 @@ async def get_attack_paths_for_version(
         return _enumerate_paths_for_model(model, project.atlas_enabled)
     except (AttackGraphBudgetExceededError, PathEnumerationBudgetExceededError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class InvalidationConditionOut(BaseModel):
+    kind: str
+    entity_id: str
+    description: str
+
+
+class AdjudicationOut(BaseModel):
+    candidate_threat_id: str
+    verdict: str
+    rationale: str
+    evidence_ref: str
+    citation_score: float
+    invalidation_condition: InvalidationConditionOut | None
+
+
+class RejectionLogEntryOut(BaseModel):
+    candidate_threat_id: str
+    element_id: str
+    category: str
+    reason_code: str
+    detail: str
+
+
+class AdjudicationResultOut(BaseModel):
+    candidate_count: int
+    adjudicated_threats: list[AdjudicationOut]
+    rejection_log: list[RejectionLogEntryOut]
+
+
+def _adjudication_out(adjudication: Adjudication) -> AdjudicationOut:
+    condition = adjudication.invalidation_condition
+    return AdjudicationOut(
+        candidate_threat_id=adjudication.candidate_threat_id,
+        verdict=adjudication.verdict,
+        rationale=adjudication.rationale,
+        evidence_ref=adjudication.evidence_ref,
+        citation_score=adjudication.citation_score,
+        invalidation_condition=(
+            InvalidationConditionOut(
+                kind=condition.kind, entity_id=condition.entity_id, description=condition.description
+            )
+            if condition is not None
+            else None
+        ),
+    )
+
+
+def _rejection_out(entry: RejectionLogEntry) -> RejectionLogEntryOut:
+    return RejectionLogEntryOut(
+        candidate_threat_id=entry.candidate_threat_id,
+        element_id=entry.element_id,
+        category=entry.category,
+        reason_code=entry.reason_code,
+        detail=entry.detail,
+    )
+
+
+def _adjudicate_model(model: SystemModel, atlas_enabled: bool) -> AdjudicationResultOut:
+    index = _get_technique_index()
+    registry = AgentRegistry()
+    registry.register(build_enumeration_agent(_RULESET, index))
+    orchestrator = Orchestrator(registry, validate=validate_enumeration_grounding)
+    result = orchestrator.invoke(
+        ENUMERATION_AGENT_NAME, {"model": model, "atlas_enabled": atlas_enabled}
+    )
+    return AdjudicationResultOut(
+        candidate_count=result.output_artifacts["candidate_count"],
+        adjudicated_threats=[
+            _adjudication_out(a) for a in result.output_artifacts["adjudicated_threats"]
+        ],
+        rejection_log=[_rejection_out(r) for r in result.output_artifacts["rejection_log"]],
+    )
+
+
+@router.get(
+    "/{project_id}/system-model/adjudicated-threats", response_model=AdjudicationResultOut
+)
+async def get_latest_adjudicated_threats(
+    project_id: str,
+    project_service: ProjectService = Depends(get_project_service),
+    model_service: ProjectSystemModelService = Depends(get_system_model_service),
+) -> AdjudicationResultOut:
+    try:
+        project = await project_service.get_project(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="project not found") from exc
+    try:
+        model = await model_service.get_latest(project_id)
+    except SystemModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="no system model has been frozen yet") from exc
+    try:
+        return _adjudicate_model(model, project.atlas_enabled)
+    except AttackGraphBudgetExceededError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"central grounding gate rejected agent output: {exc}"
+        ) from exc
+
+
+@router.get(
+    "/{project_id}/system-model/versions/{version}/adjudicated-threats",
+    response_model=AdjudicationResultOut,
+)
+async def get_adjudicated_threats_for_version(
+    project_id: str,
+    version: int,
+    project_service: ProjectService = Depends(get_project_service),
+    model_service: ProjectSystemModelService = Depends(get_system_model_service),
+) -> AdjudicationResultOut:
+    try:
+        project = await project_service.get_project(project_id)
+    except ProjectNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="project not found") from exc
+    try:
+        model = await model_service.get_version(project_id, version)
+    except SystemModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="system model version not found") from exc
+    try:
+        return _adjudicate_model(model, project.atlas_enabled)
+    except AttackGraphBudgetExceededError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=500, detail=f"central grounding gate rejected agent output: {exc}"
+        ) from exc
