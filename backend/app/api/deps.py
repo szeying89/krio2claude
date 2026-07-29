@@ -13,6 +13,7 @@ from app.services.llm.gateway import LLMGateway
 from app.services.llm.keys import MissingAPIKeyError, get_api_key
 from app.services.llm.provider import AnthropicProvider, LLMProvider, OpenAIProvider
 from app.services.project_service import ProjectService
+from app.services.systemmodel.db_service import ProjectSystemModelService
 
 _PROVIDER_BUILDERS: dict[str, Callable[..., LLMProvider]] = {
     "anthropic": AnthropicProvider,
@@ -50,6 +51,12 @@ async def get_project_cri_service() -> AsyncIterator[ProjectCRIService]:
     db = get_database()
     async with db.session_factory() as session:
         yield ProjectCRIService(session, get_settings())
+
+
+async def get_system_model_service() -> AsyncIterator[ProjectSystemModelService]:
+    db = get_database()
+    async with db.session_factory() as session:
+        yield ProjectSystemModelService(session, get_settings())
 
 
 def build_llm_provider(provider_name: str) -> LLMProvider:

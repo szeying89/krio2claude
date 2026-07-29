@@ -3,11 +3,9 @@ from pydantic import BaseModel
 
 from app.api.deps import get_llm_gateway, get_project_service
 from app.core.config import get_settings
-from app.orchestrator.budget import AgentBudget
-from app.orchestrator.contracts import AgentContext
 from app.services.llm.gateway import LLMGateway
 from app.services.llm.models import CompletionParams
-from app.services.modelbuilding.agent import build_model_building_agent
+from app.services.modelbuilding.agent import documents_input_for_project, run_model_building
 from app.services.modelbuilding.models import (
     Assumption,
     CompletenessFinding,
@@ -222,24 +220,6 @@ async def build_model_draft(
 
     settings = get_settings()
     params = CompletionParams(model=settings.llm_model)
-    spec = build_model_building_agent(gateway, params)
-
-    documents = [
-        {
-            "document_id": document.id,
-            "prose": document.extracted_prose,
-            "mermaid_sources": [block["source"] for block in document.mermaid_blocks],
-        }
-        for document in project.documents
-    ]
-
-    ctx = AgentContext(
-        input_artifacts={"documents": documents},
-        config={},
-        pinned_snapshots={},
-        budget=AgentBudget(spec.name, spec.max_tool_calls),
-    )
-    output_artifacts = spec.handler(ctx)
-    draft = output_artifacts["system_model_draft"]
-    assert isinstance(draft, SystemModelDraft)
+    documents = documents_input_for_project(project)
+    draft = run_model_building(gateway, params, documents)
     return draft_to_response(draft)

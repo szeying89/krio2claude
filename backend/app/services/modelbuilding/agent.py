@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.orchestrator.budget import AgentBudget
 from app.orchestrator.contracts import AgentContext, AgentSpec
 from app.services.llm.gateway import LLMGateway
 from app.services.llm.models import CompletionParams
@@ -20,7 +21,7 @@ from app.services.mermaid.errors import MermaidParseError
 from app.services.mermaid.parser import parse_diagram
 from app.services.modelbuilding.completeness import check_completeness
 from app.services.modelbuilding.merge import ModelBuilder
-from app.services.modelbuilding.models import Assumption
+from app.services.modelbuilding.models import Assumption, SystemModelDraft
 from app.services.modelbuilding.prose_extractor import extract_prose_entities
 
 AGENT_NAME = "model_building"
@@ -85,3 +86,37 @@ def build_model_building_agent(gateway: LLMGateway, params: CompletionParams) ->
         output_artifact_types=("system_model_draft",),
         handler=handler,
     )
+
+
+def documents_input_for_project(project: Any) -> list[dict[str, Any]]:
+    """Builds the `documents` input_artifacts shape from a `Project` ORM
+    instance's `.documents` — shared by every caller (the model-draft API,
+    the Task 9 freeze pipeline) so the mapping from stored `DesignDocument`
+    rows to agent input lives in exactly one place."""
+    return [
+        {
+            "document_id": document.id,
+            "prose": document.extracted_prose,
+            "mermaid_sources": [block["source"] for block in document.mermaid_blocks],
+        }
+        for document in project.documents
+    ]
+
+
+def run_model_building(
+    gateway: LLMGateway, params: CompletionParams, documents: list[dict[str, Any]]
+) -> SystemModelDraft:
+    """Convenience wrapper for callers that just want the draft (API
+    handlers, the Task 9 freeze pipeline) without wiring an
+    AgentContext/budget themselves — same handler either way."""
+    spec = build_model_building_agent(gateway, params)
+    ctx = AgentContext(
+        input_artifacts={"documents": documents},
+        config={},
+        pinned_snapshots={},
+        budget=AgentBudget(spec.name, spec.max_tool_calls),
+    )
+    output_artifacts = spec.handler(ctx)
+    draft = output_artifacts["system_model_draft"]
+    assert isinstance(draft, SystemModelDraft)
+    return draft
