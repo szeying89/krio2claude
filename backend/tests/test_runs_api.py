@@ -1,5 +1,6 @@
 import asyncio
 import json
+import stat
 
 import pytest
 
@@ -26,6 +27,19 @@ async def test_create_run_provisions_artifact_directory(client, tmp_path):
     resp = await client.post("/runs", json={"stage_names": ["ingest"]})
     run_id = resp.json()["id"]
     assert (tmp_path / "data" / "runs" / run_id).is_dir()
+
+
+@pytest.mark.asyncio
+async def test_create_run_provisions_the_artifact_directory_with_restrictive_permissions(
+    client, tmp_path
+):
+    """Security-review finding, fixed here: this directory was previously
+    created with default OS permissions rather than the owner-only mode
+    every other storage writer in the codebase uses."""
+    resp = await client.post("/runs", json={"stage_names": ["ingest"]})
+    run_id = resp.json()["id"]
+    run_dir = tmp_path / "data" / "runs" / run_id
+    assert stat.S_IMODE(run_dir.stat().st_mode) == 0o700
 
 
 @pytest.mark.asyncio

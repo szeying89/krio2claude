@@ -12,6 +12,7 @@ from app.orchestrator.state_machine import (
     validate_run_transition,
     validate_stage_transition,
 )
+from app.services.fs_permissions import secure_mkdir
 
 
 class RunNotFoundError(Exception):
@@ -59,7 +60,10 @@ class RunService:
                 )
             )
         await self.session.commit()
-        (self.settings.runs_dir / run.id).mkdir(parents=True, exist_ok=True)
+        # Security-review finding, fixed here: this per-run directory was
+        # created with default OS permissions rather than the owner-only
+        # mode every other storage writer in the codebase uses.
+        secure_mkdir(self.settings.runs_dir / run.id, parents=True, exist_ok=True)
         return await self.get_run(run.id)
 
     async def get_run(self, run_id: str) -> Run:

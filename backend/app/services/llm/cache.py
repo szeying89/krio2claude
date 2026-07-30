@@ -21,6 +21,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from app.services.fs_permissions import FILE_MODE, secure_mkdir
+
 
 def compute_cache_key(
     prompt: str,
@@ -51,10 +53,20 @@ class ContentAddressedCache:
         return json.loads(path.read_text())
 
     def put(self, key: str, value: dict[str, Any]) -> None:
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        # Security-review finding, fixed here: this cache holds the full
+        # text of every prompt sent to the LLM and every raw completion
+        # received -- project descriptions, DFD content, whatever
+        # redact_secrets() didn't catch. It previously relied entirely on
+        # its parent directory happening to already be locked down by
+        # main.py's startup secure_mkdir; this makes the guarantee the
+        # module's own, matching every other storage writer in the
+        # codebase (kb/snapshot.py, cri/snapshot.py, intel/storage.py,
+        # project_service.py).
+        secure_mkdir(self.cache_dir, parents=True, exist_ok=True)
         path = self.cache_dir / f"{key}.json"
         if path.exists():
             return  # content-addressed: an existing entry for this key is already correct
         tmp_path = self.cache_dir / f".tmp-{key}-{uuid.uuid4().hex}.json"
         tmp_path.write_text(json.dumps(value, indent=2, sort_keys=True))
+        tmp_path.chmod(FILE_MODE)
         tmp_path.rename(path)

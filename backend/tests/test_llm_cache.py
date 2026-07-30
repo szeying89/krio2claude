@@ -1,3 +1,5 @@
+import stat
+
 from app.services.llm.cache import ContentAddressedCache, compute_cache_key
 
 
@@ -63,3 +65,17 @@ def test_put_leaves_no_temp_files_behind(tmp_path):
     cache.put("key1", {"value": "x"})
     remaining = list(cache_dir.iterdir())
     assert remaining == [cache_dir / "key1.json"]
+
+
+def test_put_creates_the_cache_dir_and_entry_with_restrictive_permissions(tmp_path):
+    """Security-review finding, fixed here: this cache stores the full
+    text of every prompt sent to the LLM and every raw completion
+    received -- it must not rely on its parent directory happening to
+    already be locked down; it needs to enforce owner-only permissions
+    itself, exactly like every other storage writer in the codebase."""
+    cache_dir = tmp_path / "nested" / "cache"
+    cache = ContentAddressedCache(cache_dir)
+    cache.put("key1", {"value": "x"})
+
+    assert stat.S_IMODE(cache_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE((cache_dir / "key1.json").stat().st_mode) == 0o600
