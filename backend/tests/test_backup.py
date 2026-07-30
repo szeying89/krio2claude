@@ -19,8 +19,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.deps import get_llm_gateway
-from app.core.config import get_settings
-from app.services.backup import BackupError, create_backup, restore_backup
+from app.core.config import Settings, get_settings
+from app.services.backup import BackupError, _sqlite_db_path, create_backup, restore_backup, run
 from app.services.llm.fake_provider import FakeProvider
 from app.services.llm.gateway import LLMGateway
 
@@ -144,3 +144,61 @@ def test_backup_archive_never_contains_a_path_traversal_member(tmp_path):
 
     with pytest.raises(tarfile.OutsideDestinationError):
         restore_backup(settings, malicious_archive)
+
+
+def test_sqlite_db_path_is_none_for_a_non_sqlite_database_url():
+    assert _sqlite_db_path("postgresql+asyncpg://user:pass@host/db") is None
+
+
+def test_restore_raises_when_archive_has_a_db_but_settings_has_no_sqlite_url(tmp_path):
+    """A backup taken while running on SQLite, restored against settings
+    later reconfigured for a different (non-SQLite) database_url, must
+    fail loudly rather than silently discard the database half of the
+    archive."""
+    source_settings = Settings(
+        data_dir=tmp_path / "source-data", database_url=f"sqlite+aiosqlite:///{tmp_path / 'source.db'}"
+    )
+    source_settings.data_dir.mkdir(parents=True)
+    db_path = _sqlite_db_path(source_settings.database_url)
+    assert db_path is not None
+    db_path.write_bytes(b"fake sqlite content")
+
+    archive = tmp_path / "backup.tar.gz"
+    create_backup(source_settings, archive)
+
+    restore_settings = Settings(
+        data_dir=tmp_path / "restore-data", database_url="postgresql+asyncpg://user:pass@host/db"
+    )
+    with pytest.raises(BackupError, match="no SQLite database_url"):
+        restore_backup(restore_settings, archive)
+
+
+def test_cli_create_and_restore_dispatch(tmp_path, monkeypatch, capsys):
+    """The argparse entry point (`python -m app.services.backup create|
+    restore <archive>`) genuinely dispatches to the same create_backup/
+    restore_backup functions the rest of this file already verifies work
+    correctly, rather than being untested wiring."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    (data_dir / "marker.txt").write_text("hello")
+    db_path = tmp_path / "app.db"
+    db_path.write_bytes(b"fake db")
+
+    monkeypatch.setenv("TM_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("TM_DATABASE_URL", f"sqlite+aiosqlite:///{db_path}")
+
+    archive = tmp_path / "cli-backup.tar.gz"
+    monkeypatch.setattr("sys.argv", ["backup", "create", str(archive)])
+    run()
+    assert archive.exists()
+    assert "backup written to" in capsys.readouterr().out
+
+    shutil.rmtree(data_dir)
+    db_path.unlink()
+
+    monkeypatch.setattr("sys.argv", ["backup", "restore", str(archive)])
+    run()
+    assert "restored from" in capsys.readouterr().out
+    assert data_dir.exists()
+    assert (data_dir / "marker.txt").read_text() == "hello"
+    assert db_path.exists()
