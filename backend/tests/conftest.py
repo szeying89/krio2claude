@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from app.api.rate_limit import reset_rate_limits
 from app.db.base import get_database, reset_database
 from app.orchestrator.events import reset_event_bus
 
@@ -14,6 +15,7 @@ async def app_env(tmp_path, monkeypatch):
     monkeypatch.setenv("TM_DATA_DIR", str(tmp_path / "data"))
     reset_database()
     reset_event_bus()
+    reset_rate_limits()
 
     db = get_database()
     await db.create_all()
@@ -21,6 +23,7 @@ async def app_env(tmp_path, monkeypatch):
     await db.dispose()
     reset_database()
     reset_event_bus()
+    reset_rate_limits()
 
 
 @pytest_asyncio.fixture

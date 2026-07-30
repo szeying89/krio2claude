@@ -20,10 +20,26 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 20 * 1024 * 1024  # 20 MiB
 
-    # Strict allowlist, never a wildcard: this is a local, single-tenant,
-    # no-auth v1 (Requirement 1) -- the only legitimate cross-origin
-    # caller is the bundled React/TS frontend's own dev server.
+    # Strict allowlist, never a wildcard: this is a local, single-tenant
+    # tool (Requirement 1) -- the only legitimate cross-origin caller is
+    # the bundled React/TS frontend's own dev server.
     cors_allowed_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    # Security-review finding: v1 shipped with no in-app authentication
+    # at all, relying entirely on loopback-only binding plus the
+    # documented "put a reverse proxy with auth in front of it" guidance
+    # for any non-local exposure. This is `None` by default, preserving
+    # that exact behavior (and every existing test's assumptions) --
+    # setting TM_API_KEY turns on a real, enforced gate
+    # (app/api/auth.py::require_api_key) on every route.
+    api_key: str | None = None
+
+    # Security-review finding: LLM-invoking endpoints had no throttling,
+    # so repeated requests translate directly into repeated real-money
+    # LLM API calls -- a denial-of-wallet risk. `None` by default preserves
+    # the original unthrottled behavior; setting TM_RATE_LIMIT_PER_MINUTE
+    # enables app/api/rate_limit.py::enforce_rate_limit on those endpoints.
+    rate_limit_per_minute: int | None = None
 
     llm_provider: str = "anthropic"  # "anthropic" | "openai"
     llm_model: str = "claude-sonnet-5"

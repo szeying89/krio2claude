@@ -12,6 +12,7 @@ from app.api.deps import (
     get_system_model_service,
 )
 from app.api.gap_context import cri_statements_with_bridge, get_kb_snapshot
+from app.api.rate_limit import enforce_rate_limit
 from app.core.config import get_settings
 from app.orchestrator.orchestrator import Orchestrator, ValidationError
 from app.orchestrator.registry import AgentRegistry
@@ -269,6 +270,7 @@ class ReportOut(BaseModel):
 async def get_report(
     project_id: str,
     audience: str,
+    _rate_limit: None = Depends(enforce_rate_limit),
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
@@ -305,6 +307,7 @@ async def get_report(
 async def get_report_pdf(
     project_id: str,
     audience: str,
+    _rate_limit: None = Depends(enforce_rate_limit),
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
@@ -356,6 +359,7 @@ async def get_otm_export(
 @router.get("/{project_id}/exports/csv")
 async def get_csv_export(
     project_id: str,
+    _rate_limit: None = Depends(enforce_rate_limit),
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
     cri_service: ProjectCRIService = Depends(get_project_cri_service),
@@ -378,6 +382,7 @@ async def get_csv_export(
 @router.get("/{project_id}/exports/json")
 async def get_json_export(
     project_id: str,
+    _rate_limit: None = Depends(enforce_rate_limit),
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
     cri_service: ProjectCRIService = Depends(get_project_cri_service),

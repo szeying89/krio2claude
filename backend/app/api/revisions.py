@@ -8,6 +8,7 @@ from app.api.deps import (
     get_system_model_service,
 )
 from app.api.gap_context import cri_statements_with_bridge, get_kb_snapshot
+from app.api.rate_limit import enforce_rate_limit
 from app.core.config import get_settings
 from app.services.content_addressing import is_valid_content_hash
 from app.services.cri.db_service import CRIProfileNotUploadedError, ProjectCRIService
@@ -197,6 +198,7 @@ async def create_revision_for_project(
 async def create_revision(
     project_id: str,
     body: RevisionCreateIn,
+    _rate_limit: None = Depends(enforce_rate_limit),
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
     cri_service: ProjectCRIService = Depends(get_project_cri_service),

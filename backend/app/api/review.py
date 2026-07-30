@@ -11,6 +11,7 @@ from app.api.deps import (
     get_system_model_service,
 )
 from app.api.gap_context import cri_statements_with_bridge, get_kb_snapshot
+from app.api.rate_limit import enforce_rate_limit
 from app.api.revisions import RevisionCreateIn, RevisionOut, create_revision_for_project
 from app.core.config import get_settings
 from app.orchestrator.orchestrator import Orchestrator, ValidationError
@@ -129,6 +130,7 @@ async def _gather_critique_inputs(
 @router.post("/{project_id}/review-items/generate", response_model=list[ReviewItemOut])
 async def generate_review_items(
     project_id: str,
+    _rate_limit: None = Depends(enforce_rate_limit),
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
     cri_service: ProjectCRIService = Depends(get_project_cri_service),

@@ -1,11 +1,12 @@
 import argparse
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.assurance import router as assurance_router
 from app.api.audit import router as audit_router
+from app.api.auth import require_api_key
 from app.api.cri import router as cri_router
 from app.api.cri import snapshots_router as cri_snapshots_router
 from app.api.enumeration import router as enumeration_router
@@ -48,14 +49,18 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Ground-Truth Threat Modelling Platform", lifespan=lifespan)
+    app = FastAPI(
+        title="Ground-Truth Threat Modelling Platform",
+        lifespan=lifespan,
+        dependencies=[Depends(require_api_key)],
+    )
     settings = get_settings()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
-        allow_credentials=False,  # no auth/cookies in v1 -- nothing to carry cross-origin
+        allow_credentials=False,  # no cookie-based auth -- nothing to carry cross-origin
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
-        allow_headers=["content-type"],
+        allow_headers=["content-type", "x-api-key"],
     )
     app.include_router(runs_router)
     app.include_router(projects_router)
