@@ -89,3 +89,18 @@ def test_missing_required_column_raises_actionable_error(tmp_path):
     wb.save(tmp_path / "missing_columns.xlsx")
     with pytest.raises(CRIWorkbookParseError, match="missing expected column"):
         parse_workbook(tmp_path / "missing_columns.xlsx")
+
+
+def test_rejects_a_zip_bomb_workbook(tmp_path):
+    """Security-review fix: XLSX is a zip container too, and openpyxl
+    unzips it unconditionally -- checked (and rejected) before openpyxl
+    ever gets to parse it, given a real zip with one anomalously
+    compressible entry."""
+    import zipfile
+
+    archive_path = tmp_path / "bomb.xlsx"
+    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("xl/worksheets/sheet1.xml", b"0" * 50_000_000)
+
+    with pytest.raises(CRIWorkbookParseError, match="rejected"):
+        parse_workbook(archive_path)

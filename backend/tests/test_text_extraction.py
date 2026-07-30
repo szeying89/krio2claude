@@ -52,6 +52,23 @@ def test_extract_docx_rejects_garbage():
         extract_docx(b"not a docx at all")
 
 
+def test_extract_docx_rejects_a_zip_bomb():
+    """Security-review fix: DOCX is a zip container under the hood, and
+    python-docx unzips it unconditionally -- a small, highly-compressible
+    archive can expand to a huge decompressed size before the library
+    ever gets a chance to report a format error. Constructed as a real
+    zip (so the check itself, not just a garbage-input path, is
+    exercised) with one entry that compresses at an enormous ratio."""
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("word/document.xml", b"0" * 50_000_000)
+
+    with pytest.raises(TextExtractionError, match="rejected"):
+        extract_docx(buffer.getvalue())
+
+
 def test_extract_text_dispatches_by_extension():
     assert extract_text(".txt", b"hello") == "hello"
     with pytest.raises(TextExtractionError):

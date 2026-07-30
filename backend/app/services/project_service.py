@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import Settings
 from app.models.enums import BusinessCriticality, SystemClass
 from app.models.project import DesignDocument, Project
+from app.services.fs_permissions import FILE_MODE, secure_mkdir
 from app.services.mermaid_extraction import extract_mermaid_blocks, strip_mermaid_blocks
 from app.services.text_extraction import extract_text
 from app.services.upload_validation import validate_upload
@@ -98,9 +99,10 @@ class ProjectService:
         prose = strip_mermaid_blocks(text)
 
         doc_dir = self.settings.projects_dir / project_id / "documents"
-        doc_dir.mkdir(parents=True, exist_ok=True)
+        secure_mkdir(doc_dir, parents=True, exist_ok=True)
         storage_path = doc_dir / f"{digest}{extension}"
         storage_path.write_bytes(content)
+        storage_path.chmod(FILE_MODE)
 
         document = DesignDocument(
             project_id=project_id,

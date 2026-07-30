@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.services.fs_permissions import FILE_MODE, secure_chmod_tree, secure_mkdir
+
 
 @dataclass(frozen=True)
 class ArticleRecord:
@@ -35,9 +37,9 @@ def write_article(
     if article_dir.exists():
         return article_dir  # verbatim content already stored: a true no-op
 
-    intel_dir.mkdir(parents=True, exist_ok=True)
+    secure_mkdir(intel_dir, parents=True, exist_ok=True)
     tmp_dir = intel_dir / f".tmp-{content_hash}-{uuid.uuid4().hex}"
-    tmp_dir.mkdir(parents=True)
+    secure_mkdir(tmp_dir, parents=True)
     (tmp_dir / "article.txt").write_text(raw_text)
     manifest: dict[str, Any] = {
         "content_hash": content_hash,
@@ -45,6 +47,7 @@ def write_article(
         "fetched_at": fetched_at,
     }
     (tmp_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True))
+    secure_chmod_tree(tmp_dir)
     tmp_dir.rename(article_dir)
     return article_dir
 
@@ -74,7 +77,9 @@ def write_extraction(
     same content-addressed directory, written once at ingestion time so a
     later read never needs to re-invoke the LLM."""
     payload = {"extracted_intel": extracted, "injection_indicators": list(injection_indicators)}
-    (article_dir / "extraction.json").write_text(json.dumps(payload, indent=2, sort_keys=True))
+    path = article_dir / "extraction.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+    path.chmod(FILE_MODE)
 
 
 def read_extraction(article_dir: Path) -> dict[str, Any] | None:

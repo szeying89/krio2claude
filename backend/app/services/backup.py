@@ -19,20 +19,14 @@ import tarfile
 from pathlib import Path
 
 from app.core.config import Settings, get_settings
+from app.services.sqlite_path import sqlite_db_path as _sqlite_db_path
 
-_SQLITE_PREFIX = "sqlite+aiosqlite:///"
 _DATA_ARCNAME = "data"
 _DB_ARCNAME = "db.sqlite3"
 
 
 class BackupError(Exception):
     pass
-
-
-def _sqlite_db_path(database_url: str) -> Path | None:
-    if not database_url.startswith(_SQLITE_PREFIX):
-        return None
-    return Path(database_url[len(_SQLITE_PREFIX) :])
 
 
 def create_backup(settings: Settings, dest: Path) -> Path:

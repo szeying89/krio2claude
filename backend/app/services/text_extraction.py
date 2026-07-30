@@ -7,6 +7,8 @@ import io
 import docx
 from pypdf import PdfReader
 
+from app.services.zip_bomb_guard import ZipBombError, reject_if_zip_bomb
+
 
 class TextExtractionError(Exception):
     pass
@@ -35,8 +37,16 @@ def extract_pdf(raw: bytes) -> str:
 
 
 def extract_docx(raw: bytes) -> str:
+    stream = io.BytesIO(raw)
     try:
-        document = docx.Document(io.BytesIO(raw))
+        reject_if_zip_bomb(stream)
+    except ZipBombError as exc:
+        raise TextExtractionError(f"DOCX rejected: {exc}") from exc
+    except Exception as exc:  # not a valid zip container at all
+        raise TextExtractionError(f"could not parse DOCX: {exc}") from exc
+
+    try:
+        document = docx.Document(stream)
         paragraphs = [p.text for p in document.paragraphs]
     except Exception as exc:
         raise TextExtractionError(f"could not parse DOCX: {exc}") from exc

@@ -88,6 +88,14 @@ def test_write_snapshot_is_atomic_and_readable(tmp_path):
     assert snapshot_dir.is_dir()
     assert not any(p.name.startswith(".tmp-") for p in tmp_path.iterdir())
 
+    # Security-review fix: published snapshots must be owner-only, not
+    # left at the default (typically world-readable) umask.
+    import stat
+
+    assert stat.S_IMODE(snapshot_dir.stat().st_mode) == 0o700
+    for entry in snapshot_dir.iterdir():
+        assert stat.S_IMODE(entry.stat().st_mode) == 0o600
+
     manifest = read_manifest(snapshot_dir)
     assert manifest["versions"] == versions
     assert manifest["chunk_counts"] == {"enterprise": 3}

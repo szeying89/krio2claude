@@ -11,6 +11,23 @@ is the third: even a fully-complied-with injected instruction can only ever
 populate these specific fields, since there is no field here — or anywhere
 in this agent's output — that could change project scope, CRI tier, or the
 enumeration ruleset.
+
+Security-review finding, fixed here: the article text was substituted
+into the template with no escaping of a literal `BEGIN_ARTICLE`/
+`END_ARTICLE` sequence inside it. Since the article is exactly the
+untrusted, attacker-influenceable content this module exists to defend
+against (fetched from an arbitrary URL, or pasted directly), an attacker
+could embed a fake `END_ARTICLE` followed by fabricated instructions the
+model might mistake for a legitimate directive outside the quoted
+section — a classic delimiter-breakout prompt injection. Even bounded by
+the strict output schema, a successful injection could still get a real
+ATT&CK/ATLAS technique ID reported as "mentioned" when the article never
+actually discussed it, which `revision/intel_integration.py`'s
+corroboration logic would then use to inflate that technique's risk
+score — a real business-logic consequence, not just a cosmetic one.
+`_neutralize_delimiters` closes the specific breakout by ensuring the
+untrusted text itself can never contain the marker strings the model is
+told to trust as section boundaries.
 """
 
 from __future__ import annotations
@@ -68,13 +85,27 @@ INTEL_EXTRACTION_TEMPLATE = PromptTemplate(
 )
 
 
+def _neutralize_delimiters(article_text: str) -> str:
+    """Untrusted article text must never be able to contain the literal
+    marker strings the prompt uses as section boundaries -- otherwise an
+    attacker-controlled article could close the quoted section early
+    (a fake `END_ARTICLE`) and have subsequent attacker text mistaken for
+    a legitimate instruction outside it."""
+    return article_text.replace("BEGIN_ARTICLE", "[ARTICLE_MARKER]").replace(
+        "END_ARTICLE", "[ARTICLE_MARKER]"
+    )
+
+
 def extract_intel(
     gateway: LLMGateway,
     params: CompletionParams,
     article_text: str,
 ) -> ExtractedIntel:
     result = gateway.complete_structured(
-        INTEL_EXTRACTION_TEMPLATE, {"article_text": article_text}, ExtractedIntelSchema, params
+        INTEL_EXTRACTION_TEMPLATE,
+        {"article_text": _neutralize_delimiters(article_text)},
+        ExtractedIntelSchema,
+        params,
     )
     schema = result.output
     assert isinstance(schema, ExtractedIntelSchema)

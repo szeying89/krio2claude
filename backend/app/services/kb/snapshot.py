@@ -20,6 +20,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from app.services.fs_permissions import secure_chmod_tree, secure_mkdir
 from app.services.kb.d3fend import D3fendTechnique
 from app.services.kb.heuristic_mapping import InferredMapping
 from app.services.kb.models import TechniqueChunk
@@ -90,9 +91,9 @@ def write_snapshot(
     if snapshot_dir.exists():
         return snapshot_dir  # re-running against unchanged upstream data is a no-op
 
-    kb_dir.mkdir(parents=True, exist_ok=True)
+    secure_mkdir(kb_dir, parents=True, exist_ok=True)
     tmp_dir = kb_dir / f".tmp-{content_hash}-{uuid.uuid4().hex}"
-    tmp_dir.mkdir(parents=True)
+    secure_mkdir(tmp_dir, parents=True)
 
     sorted_chunks = sorted(chunks, key=lambda c: (c.matrix, c.id))
     (tmp_dir / "techniques.json").write_text(
@@ -142,6 +143,7 @@ def write_snapshot(
     }
     (tmp_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True))
 
+    secure_chmod_tree(tmp_dir)
     tmp_dir.rename(snapshot_dir)
     return snapshot_dir
 

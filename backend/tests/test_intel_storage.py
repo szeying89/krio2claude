@@ -16,6 +16,19 @@ def test_write_then_read_round_trips_verbatim_text(tmp_path):
     assert record.content_hash == compute_content_hash("This is the verbatim article text.")
 
 
+def test_stored_article_has_restrictive_permissions(tmp_path):
+    """Security-review fix: fetched article content (which may include
+    text from an untrusted third-party URL) is stored owner-only."""
+    import stat
+
+    article_dir = write_article(
+        tmp_path, "sensitive-ish article body", source_url=None, fetched_at="2026-01-01T00:00:00Z"
+    )
+    assert stat.S_IMODE(article_dir.stat().st_mode) == 0o700
+    for entry in article_dir.iterdir():
+        assert stat.S_IMODE(entry.stat().st_mode) == 0o600
+
+
 def test_writing_identical_content_twice_is_a_no_op(tmp_path):
     write_article(tmp_path, "same text", source_url="https://a.example", fetched_at="2026-01-01T00:00:00Z")
     dir2 = write_article(tmp_path, "same text", source_url="https://b.example", fetched_at="2026-02-02T00:00:00Z")

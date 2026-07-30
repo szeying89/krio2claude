@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from app.services.cri.models import ControlObjectiveCatalog
+from app.services.fs_permissions import secure_chmod_tree, secure_mkdir
 from app.services.kb.heuristic_mapping import InferredMapping
 
 
@@ -97,11 +98,12 @@ def write_snapshot(
         (snapshot_dir / "manifest.json").write_text(
             json.dumps(existing_manifest, indent=2, sort_keys=True)
         )
+        secure_chmod_tree(snapshot_dir)
         return snapshot_dir
 
-    cri_dir.mkdir(parents=True, exist_ok=True)
+    secure_mkdir(cri_dir, parents=True, exist_ok=True)
     tmp_dir = cri_dir / f".tmp-{content_hash}-{uuid.uuid4().hex}"
-    tmp_dir.mkdir(parents=True)
+    secure_mkdir(tmp_dir, parents=True)
 
     sorted_statements = sorted(catalog.statements, key=lambda s: s.profile_id)
     (tmp_dir / "statements.json").write_text(
@@ -139,6 +141,7 @@ def write_snapshot(
     }
     (tmp_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True))
 
+    secure_chmod_tree(tmp_dir)
     tmp_dir.rename(snapshot_dir)
     return snapshot_dir
 

@@ -110,6 +110,31 @@ async def test_upload_markdown_with_embedded_diagram(client):
 
 
 @pytest.mark.asyncio
+async def test_uploaded_document_is_stored_with_restrictive_permissions(client):
+    """Security-review fix: an uploaded design document (which may
+    contain the user's own secrets or otherwise sensitive content, per
+    the redaction work elsewhere) is written to disk owner-only, not at
+    the default (typically world-readable) umask."""
+    import stat
+
+    from app.core.config import get_settings
+
+    resp = await client.post("/projects", json=VALID_PROJECT)
+    project_id = resp.json()["id"]
+
+    await client.post(
+        f"/projects/{project_id}/documents",
+        files={"file": ("design.md", DESIGN_DOC.encode(), "text/markdown")},
+    )
+
+    doc_dir = get_settings().projects_dir / project_id / "documents"
+    assert stat.S_IMODE(doc_dir.stat().st_mode) == 0o700
+    stored_files = list(doc_dir.iterdir())
+    assert len(stored_files) == 1
+    assert stat.S_IMODE(stored_files[0].stat().st_mode) == 0o600
+
+
+@pytest.mark.asyncio
 async def test_upload_hash_is_stable_for_identical_content(client):
     resp = await client.post("/projects", json=VALID_PROJECT)
     project_id = resp.json()["id"]

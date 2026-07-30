@@ -25,6 +25,7 @@ from app.services.cri.models import (
     RegulatoryDocument,
     RegulatoryReference,
 )
+from app.services.zip_bomb_guard import ZipBombError, reject_if_zip_bomb
 
 STRUCTURE_SHEET = "CRI Profile v2.2 Structure"
 ASSESSMENT_SHEET = "CRI Profile v2.2 Assessment"
@@ -231,6 +232,11 @@ def _parse_eee_sheet(ws: Worksheet) -> dict[str, EEEPackage]:
 
 
 def parse_workbook(source: str | Path | IO[bytes], version: str = "2.2") -> ControlObjectiveCatalog:
+    try:
+        reject_if_zip_bomb(source)
+    except ZipBombError as exc:
+        raise CRIWorkbookParseError(f"workbook rejected: {exc}") from exc
+
     wb = load_workbook(source, data_only=True, read_only=True)
 
     structure_statements = _parse_structure_sheet(_get_sheet(wb, STRUCTURE_SHEET))

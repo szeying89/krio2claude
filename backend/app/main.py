@@ -24,19 +24,25 @@ from app.api.runs import router as runs_router
 from app.api.systemmodel import router as systemmodel_router
 from app.core.config import assert_bind_allowed, get_settings
 from app.db.base import get_database
+from app.services.fs_permissions import secure_mkdir
+from app.services.sqlite_path import sqlite_db_path
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    settings.data_dir.mkdir(parents=True, exist_ok=True)
-    settings.runs_dir.mkdir(parents=True, exist_ok=True)
-    settings.projects_dir.mkdir(parents=True, exist_ok=True)
-    settings.kb_dir.mkdir(parents=True, exist_ok=True)
-    settings.cri_dir.mkdir(parents=True, exist_ok=True)
-    settings.intel_dir.mkdir(parents=True, exist_ok=True)
+    secure_mkdir(settings.data_dir, parents=True, exist_ok=True)
+    secure_mkdir(settings.runs_dir, parents=True, exist_ok=True)
+    secure_mkdir(settings.projects_dir, parents=True, exist_ok=True)
+    secure_mkdir(settings.kb_dir, parents=True, exist_ok=True)
+    secure_mkdir(settings.cri_dir, parents=True, exist_ok=True)
+    secure_mkdir(settings.intel_dir, parents=True, exist_ok=True)
+    secure_mkdir(settings.cache_dir, parents=True, exist_ok=True)
     db = get_database()
     await db.create_all()
+    db_path = sqlite_db_path(settings.database_url)
+    if db_path is not None and db_path.exists():
+        db_path.chmod(0o600)
     yield
     await db.dispose()
 
