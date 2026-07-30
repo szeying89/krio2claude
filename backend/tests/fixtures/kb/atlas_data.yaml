@@ -1,0 +1,37 @@
+id: ATLAS
+name: Adversarial Threat Landscape for AI Systems
+version: 5.6.0
+matrices:
+- id: ATLAS
+  name: ATLAS Matrix
+  tactics:
+  - id: AML.TA0002
+    name: Reconnaissance
+    description: The adversary is trying to gather information about the AI system.
+    object-type: tactic
+  - id: AML.TA0004
+    name: Initial Access
+    description: The adversary is trying to gain access to the AI system.
+    object-type: tactic
+  techniques:
+  - id: AML.T0000
+    name: Search Open Technical Databases
+    description: Adversaries may search for publicly available research and technical documentation.
+    object-type: technique
+    tactics:
+    - AML.TA0002
+  - id: AML.T0000.000
+    name: Journals and Conference Proceedings
+    description: Many premier AI publications come from commercial labs.
+    object-type: technique
+    specializes: AML.T0000
+  - id: AML.T0043
+    name: Craft Adversarial Data
+    description: Adversaries may craft adversarial data to bypass an AI model.
+    object-type: technique
+    tactics:
+    - AML.TA0004
+  - id: AML.MIT0000
+    name: Not a technique
+    description: A mitigation entry that must not be treated as a technique.
+    object-type: mitigation

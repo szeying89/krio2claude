@@ -1,0 +1,54 @@
+# Versioned STRIDE/LINDDUN ruleset (IMPLEMENTATION_PLAN.md, Task 10).
+#
+# `element_rules` maps a DFD element kind (and, optionally, a required
+# technology tag) to the STRIDE categories it contributes. Multiple rules
+# for the same kind are additive — e.g. every datastore gets the base
+# three categories below, and a datastore additionally tagged "log" or
+# "audit-log" also gets repudiation, matching the classic "a log is kept
+# specifically for non-repudiation" refinement of the canonical
+# Shostack STRIDE-per-element table this ruleset is otherwise a direct
+# encoding of.
+#
+# `linddun` triggers on personal-data classifications rather than a
+# per-kind table, since privacy threats attach to what an element
+# processes, not what kind of DFD node it is.
+version: "1.0.0"
+
+element_rules:
+  - match_kind: external_entity
+    categories: [spoofing, repudiation]
+
+  - match_kind: process
+    categories:
+      - spoofing
+      - tampering
+      - repudiation
+      - information_disclosure
+      - denial_of_service
+      - elevation_of_privilege
+
+  - match_kind: datastore
+    categories: [tampering, information_disclosure, denial_of_service]
+
+  - match_kind: datastore
+    match_tag: log
+    categories: [repudiation]
+
+  - match_kind: datastore
+    match_tag: audit-log
+    categories: [repudiation]
+
+  - match_kind: dataflow
+    categories: [tampering, information_disclosure, denial_of_service]
+
+linddun:
+  personal_data_classifications: [pii, phi]
+  personal_data_tags: [pii, personal-data]
+  categories:
+    - linkability
+    - identifiability
+    - non_repudiation
+    - detectability
+    - disclosure_of_information
+    - unawareness
+    - non_compliance

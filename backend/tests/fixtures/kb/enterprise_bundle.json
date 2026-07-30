@@ -1,0 +1,85 @@
+{
+  "type": "bundle",
+  "id": "bundle--test-enterprise",
+  "objects": [
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--0001",
+      "name": "Exploit Public-Facing Application",
+      "description": "Adversaries may attempt to exploit a weakness in an Internet-facing host or system.",
+      "x_mitre_domains": ["enterprise-attack"],
+      "x_mitre_platforms": ["Linux", "Windows", "macOS"],
+      "x_mitre_data_sources": ["Application Log: Application Log Content"],
+      "x_mitre_detection": "Monitor application logs for abnormal behavior.",
+      "kill_chain_phases": [
+        {"kill_chain_name": "mitre-attack", "phase_name": "initial-access"}
+      ],
+      "external_references": [
+        {"source_name": "mitre-attack", "external_id": "T1190", "url": "https://attack.mitre.org/techniques/T1190/"}
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--0002",
+      "name": "Application Layer Protocol",
+      "description": "Adversaries may communicate using OSI application layer protocols to avoid detection.",
+      "x_mitre_domains": ["enterprise-attack"],
+      "x_mitre_platforms": ["Linux", "Windows", "macOS"],
+      "x_mitre_data_sources": ["Network Traffic: Network Traffic Content"],
+      "x_mitre_detection": "",
+      "kill_chain_phases": [
+        {"kill_chain_name": "mitre-attack", "phase_name": "command-and-control"}
+      ],
+      "external_references": [
+        {"source_name": "mitre-attack", "external_id": "T1071", "url": "https://attack.mitre.org/techniques/T1071/"}
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--0003",
+      "name": "Extra Window Memory Injection",
+      "description": "Adversaries may inject malicious code into process via Extra Window Memory (EWM).",
+      "x_mitre_domains": ["enterprise-attack"],
+      "x_mitre_platforms": ["Windows"],
+      "x_mitre_data_sources": null,
+      "x_mitre_detection": null,
+      "x_mitre_is_subtechnique": true,
+      "kill_chain_phases": [
+        {"kill_chain_name": "mitre-attack", "phase_name": "defense-evasion"},
+        {"kill_chain_name": "mitre-attack", "phase_name": "privilege-escalation"}
+      ],
+      "external_references": [
+        {"source_name": "mitre-attack", "external_id": "T1055.011", "url": "https://attack.mitre.org/techniques/T1055/011"}
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--revoked",
+      "name": "Old Revoked Technique",
+      "description": "This technique has been revoked and superseded.",
+      "revoked": true,
+      "x_mitre_domains": ["enterprise-attack"],
+      "kill_chain_phases": [{"kill_chain_name": "mitre-attack", "phase_name": "execution"}],
+      "external_references": [
+        {"source_name": "mitre-attack", "external_id": "T9001", "url": "https://attack.mitre.org/techniques/T9001/"}
+      ]
+    },
+    {
+      "type": "attack-pattern",
+      "id": "attack-pattern--deprecated",
+      "name": "Old Deprecated Technique",
+      "description": "This technique has been deprecated.",
+      "x_mitre_deprecated": true,
+      "x_mitre_domains": ["enterprise-attack"],
+      "kill_chain_phases": [{"kill_chain_name": "mitre-attack", "phase_name": "execution"}],
+      "external_references": [
+        {"source_name": "mitre-attack", "external_id": "T9002", "url": "https://attack.mitre.org/techniques/T9002/"}
+      ]
+    },
+    {
+      "type": "course-of-action",
+      "id": "course-of-action--0001",
+      "name": "Not a technique, should be ignored"
+    }
+  ]
+}

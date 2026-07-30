@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Runtime data / local dbs (never committed — user-supplied/licensed content, run artifacts)
+backend/data/
+backend/app.db
+backend/*.db
+data/
+*.db
+*.db-journal
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
