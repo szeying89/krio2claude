@@ -80,6 +80,7 @@ All settings are environment variables prefixed `TM_` (see
 | `TM_DATA_DIR` | `./data` | KB/CRI/intel/project storage root |
 | `TM_DATABASE_URL` | `sqlite+aiosqlite:///./app.db` | Only SQLite is supported by the backup/restore tooling below |
 | `TM_MAX_UPLOAD_BYTES` | `20971520` (20 MiB) | Enforced on every upload endpoint, checked incrementally while streaming (never buffers an oversized body first) |
+| `TM_MAX_REQUEST_BODY_BYTES` | `26214400` (25 MiB) | Ceiling on every request body, JSON included — independent of `TM_MAX_UPLOAD_BYTES` so a low upload-size test/config never collides with it (`app/api/body_size_limit.py`) |
 | `TM_CORS_ALLOWED_ORIGINS` | `["http://localhost:5173", "http://127.0.0.1:5173"]` | Strict allowlist — never a wildcard |
 | `TM_API_KEY` | unset | Off by default; set to require a matching `X-API-Key` header on every request — see "Security" below |
 | `TM_RATE_LIMIT_PER_MINUTE` | unset | Off by default; set to cap requests per client IP on the LLM-invoking endpoints (report/export generation, review-item generation, revision creation) |
@@ -295,14 +296,23 @@ by anyone but you, turn these on:
    compression ratios and uncompressed size before being handed to the
    parsing library, to reject zip-bomb payloads
    (`app/services/zip_bomb_guard.py`).
-6. **All locally stored data is owner-only on disk.** Every directory and
+6. **Every request body has a size ceiling, not just file uploads.**
+   `TM_MAX_REQUEST_BODY_BYTES` is enforced by ASGI middleware
+   (`app/api/body_size_limit.py::BodySizeLimitMiddleware`) in front of
+   every endpoint: a well-behaved client's declared `Content-Length` is
+   checked before a single byte is read, and a chunked body with no
+   `Content-Length` is bounded by tracking the running total and aborting
+   the read the instant it crosses the limit — a plain JSON body (e.g. an
+   oversized list field) can't be used to force the server to fully
+   buffer and parse an arbitrarily large payload.
+7. **All locally stored data is owner-only on disk.** Every directory and
    file this platform creates — uploaded documents, KB/CRI/intel
    snapshots, the SQLite database, the LLM completion cache, per-run
    artifacts — is created at `0700`/`0600` regardless of the process
    umask (`app/services/fs_permissions.py`), since filesystem permissions
    are the only boundary between this data and another local account when
    there's no in-app multi-user isolation.
-7. **Secrets are redacted before they ever reach an LLM provider.**
+8. **Secrets are redacted before they ever reach an LLM provider.**
    `app/services/llm/redaction.py` scans for common secret shapes
    (provider API keys, AWS keys, PEM private key blocks, JWTs, generic
    `password:`/`token:` assignments) and the real gateway dependency
@@ -311,15 +321,15 @@ by anyone but you, turn these on:
    redacted before the prompt is ever sent or logged. The audit log
    applies the same redaction, recursively through nested dicts/lists, to
    every summary/detail field it stores.
-8. **API keys are never stored in the database, logs, or exports** —
+9. **API keys are never stored in the database, logs, or exports** —
    resolved from an environment variable or the OS keyring at call time
    only (`app/services/llm/keys.py`), and no error message or log line
    in this codebase ever includes a resolved key value.
-9. **Outbound intel fetches are SSRF-hardened against DNS rebinding**: the
-   IP a hostname resolves to is validated and then pinned for the actual
-   connection, closing the gap between the resolve-time check and
-   connect-time DNS lookup (`app/services/intel/ssrf_guard.py`).
-10. **Content-addressed lookups validate their hash format** before it
+10. **Outbound intel fetches are SSRF-hardened against DNS rebinding**: the
+    IP a hostname resolves to is validated and then pinned for the actual
+    connection, closing the gap between the resolve-time check and
+    connect-time DNS lookup (`app/services/intel/ssrf_guard.py`).
+11. **Content-addressed lookups validate their hash format** before it
     ever reaches a filesystem path join, so a malformed or path-traversal
     value 404s instead of reaching `os.path`
     (`app/services/content_addressing.py`).

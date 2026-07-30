@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.assurance import router as assurance_router
 from app.api.audit import router as audit_router
 from app.api.auth import require_api_key
+from app.api.body_size_limit import BodySizeLimitMiddleware
 from app.api.cri import router as cri_router
 from app.api.cri import snapshots_router as cri_snapshots_router
 from app.api.enumeration import router as enumeration_router
@@ -74,6 +75,10 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["content-type", "x-api-key"],
     )
+    # Security-review finding: only file-upload endpoints had a body-size
+    # cap. Added last so it wraps outermost -- an oversized body is
+    # rejected before CORS handling or any route/dependency ever runs.
+    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes)
     app.include_router(runs_router)
     app.include_router(projects_router)
     app.include_router(kb_router)

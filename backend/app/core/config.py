@@ -20,6 +20,17 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 20 * 1024 * 1024  # 20 MiB
 
+    # Security-review finding: only file-upload endpoints had a size cap
+    # (max_upload_bytes, checked incrementally while streaming). Plain
+    # JSON request bodies had no ceiling at all -- reproduced directly: a
+    # single ~300 MB JSON body (an oversized `scope_statements` list) was
+    # accepted outright with no rejection anywhere in the stack. This is a
+    # separate, more generous ceiling (not reused from max_upload_bytes)
+    # so a low upload-size test/config never collides with the general
+    # body-size guard on ordinary JSON endpoints -- see
+    # app/api/body_size_limit.py.
+    max_request_body_bytes: int = 25 * 1024 * 1024  # 25 MiB
+
     # Strict allowlist, never a wildcard: this is a local, single-tenant
     # tool (Requirement 1) -- the only legitimate cross-origin caller is
     # the bundled React/TS frontend's own dev server.
