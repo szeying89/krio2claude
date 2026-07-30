@@ -248,6 +248,43 @@ async def test_action_prefix_filter_narrows_the_log(client, tmp_path):
     assert all(e["action"].startswith("kb.") for e in filtered.json())
 
 
+SECRET = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789"
+
+
+@pytest.mark.asyncio
+async def test_redaction_reaches_nested_dicts_and_lists_in_detail(client):
+    """Security-review finding, fixed: `_redact` previously only redacted
+    a top-level string *value* in `detail`, so a secret nested inside a
+    dict or hidden in a list of free-text strings would reach the
+    database -- and from there, the unauthenticated `GET /audit-log`
+    endpoint -- completely unredacted. No current call site nests
+    free-text this deeply, but the fix must hold regardless of shape."""
+    from app.db.base import get_database
+
+    db = get_database()
+    async with db.session_factory() as session:
+        service = AuditLogService(session)
+        await service.record(
+            "test.nested_redaction",
+            f"summary with a secret {SECRET}",
+            detail={
+                "nested": {"api_key": SECRET},
+                "list_of_notes": [f"note containing {SECRET}", "an unrelated note"],
+                "deeply_nested": {"outer": {"inner": [SECRET]}},
+            },
+        )
+        entries = await service.list_entries(action_prefix="test.nested_redaction")
+
+    assert len(entries) == 1
+    entry = entries[0]
+    assert SECRET not in entry.summary
+    assert SECRET not in entry.detail["nested"]["api_key"]
+    assert SECRET not in entry.detail["list_of_notes"][0]
+    assert entry.detail["list_of_notes"][1] == "an unrelated note"
+    assert SECRET not in entry.detail["deeply_nested"]["outer"]["inner"][0]
+    assert "REDACTED" in entry.detail["nested"]["api_key"]
+
+
 def test_audit_log_service_is_structurally_append_only():
     """No method on the service can modify or remove an existing entry --
     only `record` (insert) and `list_entries` (read) exist at all."""

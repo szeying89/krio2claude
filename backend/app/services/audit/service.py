@@ -22,8 +22,25 @@ from app.services.llm.redaction import redact_secrets
 
 
 def _redact(value: Any) -> Any:
+    """Recursively redacts every string reachable inside `value`.
+
+    Security-review finding, fixed here: this previously only redacted a
+    top-level string value, so a `detail` dict with a nested dict or a
+    list of free-text strings could carry an unredacted secret straight
+    into the database -- reachable by anyone through the unauthenticated
+    `GET /audit-log` endpoint. No current call site actually nests
+    free-text content this way, but the function's own docstring promises
+    "every free-text field is redacted," so it needs to actually be true
+    regardless of how a future call site shapes its `detail` payload.
+    """
     if isinstance(value, str):
         return redact_secrets(value).redacted_text
+    if isinstance(value, dict):
+        return {key: _redact(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact(item) for item in value)
     return value
 
 

@@ -73,6 +73,40 @@ def test_oversized_response_is_rejected_by_patching_max_bytes(monkeypatch):
         fetch_article("https://example.com/big", client=_client(handler), resolve=PUBLIC_RESOLVE)
 
 
+def test_oversized_response_is_rejected_via_content_length_before_any_body_is_read(monkeypatch):
+    """A Content-Length header claiming an oversized body is rejected
+    immediately -- proving the size cap is enforced before streaming the
+    body, not only after buffering all of it (the fix for a response
+    that could otherwise exhaust memory before the cap ever fired)."""
+    import app.services.intel.fetch as fetch_module
+
+    monkeypatch.setattr(fetch_module, "MAX_CONTENT_BYTES", 5)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # The actual body is tiny; only the (lying) header claims huge.
+        return httpx.Response(200, headers={"content-length": "99999999"}, text="ok")
+
+    with pytest.raises(FetchError, match="exceeds max size"):
+        fetch_article("https://example.com/big", client=_client(handler), resolve=PUBLIC_RESOLVE)
+
+
+def test_oversized_response_with_no_content_length_is_still_caught_while_streaming(monkeypatch):
+    """Without a Content-Length header at all (e.g. chunked transfer),
+    the cap is still enforced -- incrementally, over the streamed body,
+    not only via the header fast-path above."""
+    import app.services.intel.fetch as fetch_module
+
+    monkeypatch.setattr(fetch_module, "MAX_CONTENT_BYTES", 5)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        response = httpx.Response(200, text="this response is too large")
+        del response.headers["content-length"]
+        return response
+
+    with pytest.raises(FetchError, match="exceeds max size"):
+        fetch_article("https://example.com/big", client=_client(handler), resolve=PUBLIC_RESOLVE)
+
+
 def test_http_error_status_raises():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, text="not found")
@@ -89,5 +123,19 @@ def test_ssrf_guard_is_applied_before_the_first_request_too():
         fetch_article(
             "http://169.254.169.254/latest/meta-data/",
             client=_client(handler),
+            resolve=lambda _h: ["169.254.169.254"],
+        )
+
+
+def test_real_default_client_wires_in_pinned_resolution_without_error():
+    """No injected client at all -- exercises fetch_article's own real
+    default-client construction (PinnedResolutionTransport included),
+    proving the wiring is valid Python/httpx, not just the mocked-client
+    path every other test in this file uses. No real network call is
+    made: the SSRF guard's early check rejects the blocked address before
+    a connection would ever be attempted."""
+    with pytest.raises(SSRFBlockedError):
+        fetch_article(
+            "http://169.254.169.254/latest/meta-data/",
             resolve=lambda _h: ["169.254.169.254"],
         )
