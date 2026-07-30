@@ -25,9 +25,11 @@ the operational entry point.
   (`app/services/enumeration/atlas_detector.py`) can *propose* enabling
   ATLAS from ML-platform indicators in the model, but only an explicit
   `POST /projects/{id}/atlas-confirmation` call ever flips it on.
-- **No authentication in v1.** This is a local, single-tenant tool. See
-  "Security prerequisites" below before running it anywhere but your own
-  machine.
+- **No authentication by default.** This is a local, single-tenant tool
+  and ships with authentication *off* so every existing workflow and test
+  keeps working unmodified — but a real, enforced API-key gate is one
+  environment variable away. See "Security" below before running it
+  anywhere but your own machine.
 
 ## Install and quickstart
 
@@ -77,8 +79,10 @@ All settings are environment variables prefixed `TM_` (see
 | `TM_ALLOW_NON_LOOPBACK` | `false` | Required to bind beyond loopback at all |
 | `TM_DATA_DIR` | `./data` | KB/CRI/intel/project storage root |
 | `TM_DATABASE_URL` | `sqlite+aiosqlite:///./app.db` | Only SQLite is supported by the backup/restore tooling below |
-| `TM_MAX_UPLOAD_BYTES` | `20971520` (20 MiB) | Enforced on every upload endpoint |
+| `TM_MAX_UPLOAD_BYTES` | `20971520` (20 MiB) | Enforced on every upload endpoint, checked incrementally while streaming (never buffers an oversized body first) |
 | `TM_CORS_ALLOWED_ORIGINS` | `["http://localhost:5173", "http://127.0.0.1:5173"]` | Strict allowlist — never a wildcard |
+| `TM_API_KEY` | unset | Off by default; set to require a matching `X-API-Key` header on every request — see "Security" below |
+| `TM_RATE_LIMIT_PER_MINUTE` | unset | Off by default; set to cap requests per client IP on the LLM-invoking endpoints (report/export generation, review-item generation, revision creation) |
 | `TM_LLM_PROVIDER` | `anthropic` | `anthropic` \| `openai` |
 | `TM_LLM_MODEL` | `claude-sonnet-5` | |
 
@@ -253,33 +257,72 @@ finding), and can re-open adjudications whose own stated
 `invalidation_condition` the intel satisfies. Every revision diffs
 cleanly against its parent (`GET /projects/{id}/revisions/{id}/diff`).
 
-## Security prerequisites before any non-local deployment
+## Security
 
-This build assumes a trusted local operator and has **no
-authentication**. Before running it anywhere reachable by anyone else:
+This build defaults to the exact behavior a purely local, single-operator
+tool needs — no auth, no rate limit, docs enabled — and every hardening
+control below is opt-in via one environment variable, so turning nothing
+on preserves that default exactly. Before running it anywhere reachable
+by anyone but you, turn these on:
 
-1. **Put a reverse proxy with real authentication in front of it.** The
-   server itself refuses to bind beyond loopback at all unless you pass
+1. **Set `TM_API_KEY`** to require a matching `X-API-Key` header on every
+   request (`app/api/auth.py::require_api_key`, wired once as a global
+   FastAPI dependency so no router can be missed). The comparison uses
+   `hmac.compare_digest`, so response timing can't leak how many leading
+   characters of a guess were correct. As soon as it's set, the
+   interactive API docs (`/docs`, `/redoc`, `/openapi.json`) are disabled
+   outright rather than left reachable without a key
+   (`app/main.py::create_app`) — those are plain framework routes that a
+   dependency can't gate, so the safer answer is to turn them off.
+2. **Set `TM_RATE_LIMIT_PER_MINUTE`** to cap requests per client IP on the
+   endpoints that actually invoke an LLM (report/export generation,
+   review-item generation, revision creation) — a minimal in-memory
+   sliding-window limiter (`app/api/rate_limit.py`), since each of those
+   calls has a real dollar cost.
+3. **Put a reverse proxy in front of it anyway if you can.** The server
+   itself still refuses to bind beyond loopback at all unless you pass
    `--allow-non-loopback` (or `TM_ALLOW_NON_LOOPBACK=true`), and doing so
-   logs a warning that authentication is absent
+   logs a warning if `TM_API_KEY` isn't also set
    (`app/core/config.py::assert_bind_allowed`).
-2. **CORS is a strict allowlist**, not a wildcard
+4. **CORS is a strict allowlist**, not a wildcard
    (`TM_CORS_ALLOWED_ORIGINS`) — add your real frontend origin, don't
    open it up broadly.
-3. **Upload limits are enforced** on every upload endpoint (design
-   documents, CRI workbooks) via `TM_MAX_UPLOAD_BYTES`.
-4. **Secrets are redacted before they ever reach an LLM provider.**
+5. **Upload limits are enforced** on every upload endpoint (design
+   documents, CRI workbooks) via `TM_MAX_UPLOAD_BYTES`, checked
+   incrementally while the body streams in rather than after buffering it
+   whole (`app/services/upload_validation.py::read_upload_within_limit`).
+   DOCX/XLSX uploads are additionally checked for anomalous
+   compression ratios and uncompressed size before being handed to the
+   parsing library, to reject zip-bomb payloads
+   (`app/services/zip_bomb_guard.py`).
+6. **All locally stored data is owner-only on disk.** Every directory and
+   file this platform creates — uploaded documents, KB/CRI/intel
+   snapshots, the SQLite database, the LLM completion cache, per-run
+   artifacts — is created at `0700`/`0600` regardless of the process
+   umask (`app/services/fs_permissions.py`), since filesystem permissions
+   are the only boundary between this data and another local account when
+   there's no in-app multi-user isolation.
+7. **Secrets are redacted before they ever reach an LLM provider.**
    `app/services/llm/redaction.py` scans for common secret shapes
    (provider API keys, AWS keys, PEM private key blocks, JWTs, generic
    `password:`/`token:` assignments) and the real gateway dependency
    (`app/api/deps.py::get_llm_gateway`) has this on by default — a
    secret accidentally pasted into an uploaded design document is
    redacted before the prompt is ever sent or logged. The audit log
-   applies the same redaction to every summary/detail field it stores.
-5. **API keys are never stored in the database, logs, or exports** —
+   applies the same redaction, recursively through nested dicts/lists, to
+   every summary/detail field it stores.
+8. **API keys are never stored in the database, logs, or exports** —
    resolved from an environment variable or the OS keyring at call time
    only (`app/services/llm/keys.py`), and no error message or log line
    in this codebase ever includes a resolved key value.
+9. **Outbound intel fetches are SSRF-hardened against DNS rebinding**: the
+   IP a hostname resolves to is validated and then pinned for the actual
+   connection, closing the gap between the resolve-time check and
+   connect-time DNS lookup (`app/services/intel/ssrf_guard.py`).
+10. **Content-addressed lookups validate their hash format** before it
+    ever reaches a filesystem path join, so a malformed or path-traversal
+    value 404s instead of reaching `os.path`
+    (`app/services/content_addressing.py`).
 
 ## Audit log
 
