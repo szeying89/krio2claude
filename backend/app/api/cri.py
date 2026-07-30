@@ -13,7 +13,7 @@ from app.services.cri.db_service import (
 from app.services.cri.snapshot import read_manifest as read_cri_manifest
 from app.services.cri.tiering import QuestionAnswer, TieringError
 from app.services.cri.workbook_parser import CRIWorkbookParseError
-from app.services.upload_validation import UploadValidationError
+from app.services.upload_validation import UploadValidationError, read_upload_within_limit
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["cri"])
 snapshots_router = APIRouter(prefix="/cri/snapshots", tags=["cri"])
@@ -36,11 +36,10 @@ async def upload_cri_profile(
     service: ProjectCRIService = Depends(get_project_cri_service),
     audit: AuditLogService = Depends(get_audit_log_service),
 ) -> dict:
-    content = await file.read()
+    filename = file.filename or "cri-profile.xlsx"
     try:
-        manifest = await service.upload_cri_profile(
-            project_id, file.filename or "cri-profile.xlsx", content
-        )
+        content = await read_upload_within_limit(file, filename, service.settings.max_upload_bytes)
+        manifest = await service.upload_cri_profile(project_id, filename, content)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="project not found") from exc
     except UploadValidationError as exc:

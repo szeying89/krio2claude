@@ -49,12 +49,24 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
+    # Security-review finding: FastAPI's own docs routes (/docs, /redoc,
+    # /openapi.json) are plain Starlette routes added in setup(), added
+    # outside the dependency-injection tree entirely -- the app-level
+    # `dependencies=[Depends(require_api_key)]` below can never reach them
+    # (confirmed: every other route has a populated `.dependant`, these do
+    # not). Once an operator actually turns the gate on, leaving the full
+    # API schema reachable by anyone defeats the point of enabling it, so
+    # disable them rather than leave them unauthenticated.
+    docs_enabled = settings.api_key is None
     app = FastAPI(
         title="Ground-Truth Threat Modelling Platform",
         lifespan=lifespan,
         dependencies=[Depends(require_api_key)],
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url="/redoc" if docs_enabled else None,
+        openapi_url="/openapi.json" if docs_enabled else None,
     )
-    settings = get_settings()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,

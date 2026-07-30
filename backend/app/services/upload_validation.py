@@ -7,8 +7,15 @@ against their magic bytes so a renamed file can't slip past the allowlist.
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from typing import Protocol
 
 ALLOWED_EXTENSIONS = {".md", ".txt", ".pdf", ".docx"}
+
+_READ_CHUNK_BYTES = 65536
+
+
+class _AsyncReadable(Protocol):
+    async def read(self, size: int = ...) -> bytes: ...
 
 _MAGIC_BYTES: dict[str, bytes] = {
     ".pdf": b"%PDF-",
@@ -18,6 +25,29 @@ _MAGIC_BYTES: dict[str, bytes] = {
 
 class UploadValidationError(Exception):
     pass
+
+
+async def read_upload_within_limit(file: _AsyncReadable, filename: str, max_bytes: int) -> bytes:
+    """Security-review finding, fixed here: the upload endpoints previously
+    did a single unbounded `await file.read()`, buffering the entire
+    request body in memory/spooled temp storage *before* the size cap was
+    ever checked -- a client could stream an arbitrarily large body and
+    the server would fully absorb it before rejecting it. This reads in
+    fixed-size chunks and aborts the moment the declared limit is
+    exceeded, mirroring the same fix already applied to outbound fetches
+    in app/services/intel/fetch.py.
+    """
+    chunks = bytearray()
+    while True:
+        chunk = await file.read(_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        chunks.extend(chunk)
+        if len(chunks) > max_bytes:
+            raise UploadValidationError(
+                f"file {filename!r} exceeds the {max_bytes} byte limit"
+            )
+    return bytes(chunks)
 
 
 def validate_upload_size(filename: str, content: bytes, max_bytes: int) -> None:

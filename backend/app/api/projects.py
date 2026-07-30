@@ -13,7 +13,7 @@ from app.services.project_service import (
     ProjectService,
 )
 from app.services.text_extraction import TextExtractionError
-from app.services.upload_validation import UploadValidationError
+from app.services.upload_validation import UploadValidationError, read_upload_within_limit
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -74,9 +74,10 @@ async def upload_document(
     file: UploadFile,
     service: ProjectService = Depends(get_project_service),
 ) -> DesignDocumentOut:
-    content = await file.read()
+    filename = file.filename or "upload"
     try:
-        document = await service.ingest_document(project_id, file.filename or "upload", content)
+        content = await read_upload_within_limit(file, filename, service.settings.max_upload_bytes)
+        document = await service.ingest_document(project_id, filename, content)
     except ProjectNotFoundError as exc:
         raise HTTPException(status_code=404, detail="project not found") from exc
     except UploadValidationError as exc:

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.project import Project
@@ -95,21 +95,37 @@ class ProjectReviewService:
         self, project_id: str, item_id: str, decision: str, reason: str | None
     ) -> ReviewItemRecord:
         """`decision` is the verb ("accept"/"reject"); it is stored as the
-        corresponding state ("accepted"/"rejected")."""
-        record = await self.get_item(project_id, item_id)
-        if record.status != STATUS_PENDING:
-            raise ReviewItemAlreadyDecidedError(item_id)
+        corresponding state ("accepted"/"rejected").
 
+        Security-review finding, fixed here: this previously read the item,
+        checked its status in Python, and only committed afterward -- two
+        concurrent decide calls on the same item could both pass the
+        "still pending" check before either commit, producing duplicate
+        ReviewAuditEntry rows and (on the "accept" path) duplicate revision
+        creation for what should be a single, terminal decision. The
+        `UPDATE ... WHERE status = 'pending'` below makes the whole
+        check-and-transition a single atomic statement: it claims exactly
+        one row, or zero, never both callers.
+        """
+        await self._get_project(project_id)
         status = STATUS_ACCEPTED if decision == "accept" else STATUS_REJECTED
-        record.status = status
-        record.decision_reason = reason
-        record.decided_at = datetime.now(UTC)
+        result = await self.session.execute(
+            update(ReviewItemRecord)
+            .where(
+                ReviewItemRecord.id == item_id,
+                ReviewItemRecord.project_id == project_id,
+                ReviewItemRecord.status == STATUS_PENDING,
+            )
+            .values(status=status, decision_reason=reason, decided_at=datetime.now(UTC))
+        )
+        if result.rowcount == 0:  # type: ignore[attr-defined]
+            await self.get_item(project_id, item_id)  # raises ReviewItemNotFoundError if truly missing
+            raise ReviewItemAlreadyDecidedError(item_id)
         self.session.add(
             ReviewAuditEntry(review_item_id=item_id, action=status, reason=reason)
         )
         await self.session.commit()
-        await self.session.refresh(record)
-        return record
+        return await self.get_item(project_id, item_id)
 
     async def list_audit_entries(self, item_id: str) -> list[ReviewAuditEntry]:
         result = await self.session.execute(

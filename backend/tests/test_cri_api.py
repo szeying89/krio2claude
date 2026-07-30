@@ -61,7 +61,7 @@ async def test_upload_cri_profile_rejects_oversized_file(client, monkeypatch):
         files={"file": ("big.xlsx", b"x" * 1000, "application/octet-stream")},
     )
     assert upload.status_code == 422
-    assert "exceeding" in upload.json()["detail"]
+    assert "exceeds" in upload.json()["detail"]
 
 
 @pytest.mark.asyncio

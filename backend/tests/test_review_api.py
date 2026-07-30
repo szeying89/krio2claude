@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -272,3 +273,44 @@ async def test_invalid_decision_value_is_422(client, tmp_path):
         f"/projects/{project_id}/review-items/{item_id}/decide", json={"decision": "maybe"}
     )
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_concurrent_decide_calls_on_the_same_item_never_both_win(client, tmp_path):
+    """Security-review finding, fixed here: decide_item used to read the
+    item's status, check it in Python, and only then commit -- two
+    concurrent decide calls could both observe "pending" before either
+    committed, both proceeding to accept/reject (and, on the accept path,
+    both creating a revision) for what must be a single, terminal
+    decision. Firing two real concurrent requests at the same item proves
+    the atomic `UPDATE ... WHERE status = 'pending'` fix: exactly one
+    request wins with 200, the other loses with 409 -- never both 200,
+    and never both 409."""
+    from app.main import app
+
+    project_id = await _freeze_project(client, tmp_path, app)
+    app.dependency_overrides[get_llm_gateway] = _gateway_dep(tmp_path, NORMAL_CRITIQUE_RESPONSE)
+    try:
+        generated = await client.post(f"/projects/{project_id}/review-items/generate")
+    finally:
+        app.dependency_overrides.pop(get_llm_gateway, None)
+    item_id = generated.json()[0]["id"]
+
+    responses = await asyncio.gather(
+        client.post(
+            f"/projects/{project_id}/review-items/{item_id}/decide", json={"decision": "accept"}
+        ),
+        client.post(
+            f"/projects/{project_id}/review-items/{item_id}/decide", json={"decision": "reject"}
+        ),
+    )
+    statuses = sorted(r.status_code for r in responses)
+    assert statuses == [200, 409]
+
+    audit = await client.get(f"/projects/{project_id}/review-items/{item_id}/audit")
+    actions = [e["action"] for e in audit.json()]
+    assert actions.count("created") == 1
+    assert actions.count("accepted") + actions.count("rejected") == 1
+
+    revisions = await client.get(f"/projects/{project_id}/revisions")
+    assert len(revisions.json()) <= 1
