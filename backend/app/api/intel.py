@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.orchestrator.orchestrator import Orchestrator, ValidationError
 from app.orchestrator.registry import AgentRegistry
 from app.services.audit.service import AuditLogService
+from app.services.content_addressing import is_valid_content_hash
 from app.services.intel.agent import AGENT_NAME, build_intel_agent, validate_intel_extraction
 from app.services.intel.fetch import FetchError, fetch_article
 from app.services.intel.models import ExtractedIntel
@@ -144,6 +145,8 @@ async def ingest_article(
 
 @router.get("/intel/articles/{content_hash}", response_model=IntelArticleOut)
 async def get_article(content_hash: str) -> IntelArticleOut:
+    if not is_valid_content_hash(content_hash):
+        raise HTTPException(status_code=404, detail="article not found")
     settings = get_settings()
     if not article_exists(settings.intel_dir, content_hash):
         raise HTTPException(status_code=404, detail="article not found")
@@ -188,6 +191,8 @@ async def get_article_relevance(
     except SystemModelNotFoundError as exc:
         raise HTTPException(status_code=404, detail="no system model has been frozen yet") from exc
 
+    if not is_valid_content_hash(content_hash):
+        raise HTTPException(status_code=404, detail="article not found")
     settings = get_settings()
     if not article_exists(settings.intel_dir, content_hash):
         raise HTTPException(status_code=404, detail="article not found")

@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.api.schemas import RetrievalResultOut
 from app.core.config import get_settings
+from app.services.content_addressing import is_valid_content_hash
 from app.services.cri.models import DiagnosticStatement
 from app.services.kb.snapshot import read_techniques
 from app.services.retrieval.service import (
@@ -29,6 +30,8 @@ _statement_collections: dict[str, RetrievalCollection] = {}
 
 
 def _get_technique_collection(content_hash: str) -> RetrievalCollection:
+    if not is_valid_content_hash(content_hash):
+        raise HTTPException(status_code=404, detail="KB snapshot not found")
     if content_hash not in _technique_collections:
         snapshot_dir = get_settings().kb_dir / content_hash
         if not snapshot_dir.is_dir():
@@ -39,6 +42,8 @@ def _get_technique_collection(content_hash: str) -> RetrievalCollection:
 
 
 def _get_statement_collection(content_hash: str) -> RetrievalCollection:
+    if not is_valid_content_hash(content_hash):
+        raise HTTPException(status_code=404, detail="CRI snapshot not found")
     if content_hash not in _statement_collections:
         snapshot_dir = get_settings().cri_dir / content_hash
         if not snapshot_dir.is_dir():

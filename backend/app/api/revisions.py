@@ -9,6 +9,7 @@ from app.api.deps import (
 )
 from app.api.gap_context import cri_statements_with_bridge, get_kb_snapshot
 from app.core.config import get_settings
+from app.services.content_addressing import is_valid_content_hash
 from app.services.cri.db_service import CRIProfileNotUploadedError, ProjectCRIService
 from app.services.enumeration.attack_graph import AttackGraphBudgetExceededError
 from app.services.enumeration.path_enumeration import PathEnumerationBudgetExceededError
@@ -98,7 +99,9 @@ def _revision_out(record) -> RevisionOut:
 async def _load_intel_inputs(content_hashes: list[str], model, settings) -> list[IntelInput]:
     inputs = []
     for content_hash in content_hashes:
-        if not article_exists(settings.intel_dir, content_hash):
+        if not is_valid_content_hash(content_hash) or not article_exists(
+            settings.intel_dir, content_hash
+        ):
             raise HTTPException(status_code=404, detail=f"intel article {content_hash!r} not found")
         article_dir = settings.intel_dir / content_hash
         cached = read_extraction(article_dir)

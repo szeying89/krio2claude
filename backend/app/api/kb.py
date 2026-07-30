@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import get_audit_log_service, get_kb_refresh_service
 from app.core.config import get_settings
 from app.services.audit.service import AuditLogService
+from app.services.content_addressing import is_valid_content_hash
 from app.services.kb.refresh_service import KBRefreshService
 from app.services.kb.snapshot import read_manifest
 
@@ -45,6 +46,8 @@ async def list_snapshots() -> list[dict]:
 
 @router.get("/snapshots/{content_hash}")
 async def get_snapshot(content_hash: str) -> dict:
+    if not is_valid_content_hash(content_hash):
+        raise HTTPException(status_code=404, detail="snapshot not found")
     snapshot_dir = get_settings().kb_dir / content_hash
     if not snapshot_dir.is_dir():
         raise HTTPException(status_code=404, detail="snapshot not found")

@@ -4,6 +4,7 @@ from app.api.deps import get_audit_log_service, get_project_cri_service
 from app.api.schemas import ImpactTieringOut, ImpactTieringRequest
 from app.core.config import get_settings
 from app.services.audit.service import AuditLogService
+from app.services.content_addressing import is_valid_content_hash
 from app.services.cri.db_service import (
     CRIProfileNotUploadedError,
     ProjectCRIService,
@@ -20,6 +21,8 @@ snapshots_router = APIRouter(prefix="/cri/snapshots", tags=["cri"])
 
 @snapshots_router.get("/{content_hash}")
 async def get_cri_snapshot(content_hash: str) -> dict:
+    if not is_valid_content_hash(content_hash):
+        raise HTTPException(status_code=404, detail="snapshot not found")
     snapshot_dir = get_settings().cri_dir / content_hash
     if not snapshot_dir.is_dir():
         raise HTTPException(status_code=404, detail="snapshot not found")
