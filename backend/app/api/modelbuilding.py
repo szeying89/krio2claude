@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import get_llm_gateway, get_project_service
+from app.api.rate_limit import enforce_rate_limit
 from app.core.config import get_settings
 from app.services.llm.gateway import LLMGateway
 from app.services.llm.models import CompletionParams
@@ -210,6 +211,7 @@ def draft_to_response(draft: SystemModelDraft) -> SystemModelDraftOut:
 @router.post("/{project_id}/model-draft", response_model=SystemModelDraftOut)
 async def build_model_draft(
     project_id: str,
+    _rate_limit: None = Depends(enforce_rate_limit),
     project_service: ProjectService = Depends(get_project_service),
     gateway: LLMGateway = Depends(get_llm_gateway),
 ) -> SystemModelDraftOut:

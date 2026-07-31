@@ -1,7 +1,6 @@
 """Security-review fix: a minimal in-memory sliding-window rate limiter
 (app/api/rate_limit.py::enforce_rate_limit), wired only onto the
-LLM-invoking endpoints (report generation, review-item generation,
-revision creation). `TM_RATE_LIMIT_PER_MINUTE` unset (the default, and
+LLM-invoking endpoints. `TM_RATE_LIMIT_PER_MINUTE` unset (the default, and
 every other test file's assumption) preserves this build's original
 unthrottled behavior exactly -- these tests are the only ones in the
 suite that set it.
@@ -108,11 +107,15 @@ async def test_reset_rate_limits_clears_tracked_state(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_the_gate_applies_to_report_and_review_and_revision_creation_but_not_otm_export():
+async def test_the_gate_applies_to_all_llm_endpoints_but_not_otm_export():
     """Structural check that the rate limiter is wired onto the intended
     LLM-invoking endpoints and not blanket-applied everywhere."""
     from fastapi.dependencies.utils import get_dependant
 
+    from app.api.assurance import get_confidence_for_version, get_latest_confidence
+    from app.api.intel import ingest_article
+    from app.api.mitigation import get_latest_mitigation_plan, get_mitigation_plan_for_version
+    from app.api.modelbuilding import build_model_draft
     from app.api.reports import (
         get_csv_export,
         get_json_export,
@@ -122,6 +125,7 @@ async def test_the_gate_applies_to_report_and_review_and_revision_creation_but_n
     )
     from app.api.review import generate_review_items
     from app.api.revisions import create_revision
+    from app.api.systemmodel import freeze_system_model
 
     for endpoint in (
         get_report,
@@ -130,10 +134,18 @@ async def test_the_gate_applies_to_report_and_review_and_revision_creation_but_n
         get_json_export,
         generate_review_items,
         create_revision,
+        build_model_draft,
+        freeze_system_model,
+        ingest_article,
+        get_latest_confidence,
+        get_confidence_for_version,
+        get_latest_mitigation_plan,
+        get_mitigation_plan_for_version,
     ):
         dependant = get_dependant(path="/x", call=endpoint)
         dep_calls = [d.call for d in dependant.dependencies]
         assert enforce_rate_limit in dep_calls, endpoint
+        assert dep_calls[0] is enforce_rate_limit, endpoint
 
     otm_dependant = get_dependant(path="/x", call=get_otm_export)
     otm_dep_calls = [d.call for d in otm_dependant.dependencies]

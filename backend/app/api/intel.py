@@ -9,6 +9,7 @@ from app.api.deps import (
     get_project_service,
     get_system_model_service,
 )
+from app.api.rate_limit import enforce_rate_limit
 from app.core.config import get_settings
 from app.orchestrator.orchestrator import Orchestrator, ValidationError
 from app.orchestrator.registry import AgentRegistry
@@ -73,6 +74,7 @@ def _extracted_out(extracted: ExtractedIntel) -> ExtractedIntelOut:
 @router.post("/intel/articles", response_model=IntelArticleOut)
 async def ingest_article(
     body: IntelIngestIn,
+    _rate_limit: None = Depends(enforce_rate_limit),
     gateway: LLMGateway = Depends(get_llm_gateway),
     audit: AuditLogService = Depends(get_audit_log_service),
 ) -> IntelArticleOut:
