@@ -9,6 +9,7 @@ from app.api.deps import (
     get_project_service,
     get_system_model_service,
 )
+from app.api.rate_limit import enforce_rate_limit
 from app.core.config import get_settings
 from app.services.audit.service import AuditLogService
 from app.services.llm.gateway import LLMGateway
@@ -182,6 +183,7 @@ def _model_out(model: SystemModel) -> SystemModelOut:
 @router.post("/{project_id}/system-model", response_model=SystemModelOut)
 async def freeze_system_model(
     project_id: str,
+    _rate_limit: None = Depends(enforce_rate_limit),
     project_service: ProjectService = Depends(get_project_service),
     model_service: ProjectSystemModelService = Depends(get_system_model_service),
     gateway: LLMGateway = Depends(get_llm_gateway),
