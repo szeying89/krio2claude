@@ -42,6 +42,8 @@ anything beyond Mermaid-only deterministic parsing.
 cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+# -- or, without an editable install: pip install -r requirements.txt -r requirements-dev.txt
+# -- or, with uv (what CI uses): uv venv --python 3.12 .venv && uv pip install -e ".[dev]" --python .venv/bin/python
 
 # Provide credentials one of two ways:
 export ANTHROPIC_API_KEY=sk-ant-...           # or OPENAI_API_KEY, with TM_LLM_PROVIDER=openai
