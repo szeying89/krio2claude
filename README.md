@@ -45,8 +45,10 @@ pip install -e ".[dev]"
 # -- or, without an editable install: pip install -r requirements.txt -r requirements-dev.txt
 # -- or, with uv (what CI uses): uv venv --python 3.12 .venv && uv pip install -e ".[dev]" --python .venv/bin/python
 
-# Provide credentials one of two ways:
+# Provide credentials one of three ways (checked in this order):
 export ANTHROPIC_API_KEY=sk-ant-...           # or OPENAI_API_KEY, with TM_LLM_PROVIDER=openai
+# -- or, in backend/.env (see .env.example; gitignored, never commit it) --
+cp .env.example .env && $EDITOR .env
 # -- or --
 python -m keyring set threatmodel-platform anthropic
 
@@ -72,7 +74,11 @@ python -m mypy app
 ### Configuration
 
 All settings are environment variables prefixed `TM_` (see
-`app/core/config.py`), or a `backend/.env` file. Notable ones:
+`app/core/config.py`), or a `backend/.env` file (see `.env.example`).
+`ANTHROPIC_API_KEY`/`OPENAI_API_KEY` aren't `TM_`-prefixed but are also
+read from `.env` (`app/services/llm/keys.py::get_api_key`), in this
+order: real environment variable, then `.env`, then the OS keyring.
+Notable settings:
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -324,9 +330,10 @@ by anyone but you, turn these on:
    applies the same redaction, recursively through nested dicts/lists, to
    every summary/detail field it stores.
 9. **API keys are never stored in the database, logs, or exports** —
-   resolved from an environment variable or the OS keyring at call time
-   only (`app/services/llm/keys.py`), and no error message or log line
-   in this codebase ever includes a resolved key value.
+   resolved from a real environment variable, a `.env` file, or the OS
+   keyring at call time only (`app/services/llm/keys.py`), and no error
+   message or log line in this codebase ever includes a resolved key
+   value. `.env` is gitignored; never commit real credentials in it.
 10. **Outbound intel fetches are SSRF-hardened against DNS rebinding**: the
     IP a hostname resolves to is validated and then pinned for the actual
     connection, closing the gap between the resolve-time check and

@@ -41,3 +41,39 @@ def test_keyring_miss_still_raises_missing_key_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "keyring", fake_keyring)
     with pytest.raises(MissingAPIKeyError):
         get_api_key("anthropic")
+
+
+def test_reads_key_from_dotenv_file_when_no_real_env_var_is_set(monkeypatch, tmp_path):
+    """Security-review-adjacent fix: app/core/config.py's Settings only
+    loads .env for its own TM_-prefixed fields -- a provider key placed
+    in .env was previously never found here."""
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-from-dotenv\n")
+    assert get_api_key("anthropic") == "sk-ant-from-dotenv"
+
+
+def test_a_real_env_var_takes_precedence_over_dotenv(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-from-real-env")
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-from-dotenv\n")
+    assert get_api_key("anthropic") == "sk-ant-from-real-env"
+
+
+def test_dotenv_takes_precedence_over_keyring(monkeypatch, tmp_path):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("ANTHROPIC_API_KEY=sk-ant-from-dotenv\n")
+    fake_keyring = types.SimpleNamespace(
+        get_password=lambda service, account: "keyring-secret"
+    )
+    monkeypatch.setitem(sys.modules, "keyring", fake_keyring)
+    assert get_api_key("anthropic") == "sk-ant-from-dotenv"
+
+
+def test_missing_key_error_mentions_dotenv_as_an_option(monkeypatch, tmp_path):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delitem(sys.modules, "keyring", raising=False)
+    monkeypatch.chdir(tmp_path)  # no .env file here
+    with pytest.raises(MissingAPIKeyError, match="\\.env"):
+        get_api_key("anthropic")

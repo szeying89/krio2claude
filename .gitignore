@@ -7,6 +7,13 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
+# Local secrets (TM_API_KEY, ANTHROPIC_API_KEY/OPENAI_API_KEY, etc. --
+# app/core/config.py's Settings and app/services/llm/keys.py::get_api_key
+# both read backend/.env; never commit real credentials in it)
+.env
+.env.*
+!.env.example
+
 # Runtime data / local dbs (never committed — user-supplied/licensed content, run artifacts)
 backend/data/
 backend/app.db
